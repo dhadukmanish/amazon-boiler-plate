@@ -15,7 +15,7 @@
   const addDays = (s, n) => iso(new Date(+s.slice(0, 4), +s.slice(5, 7) - 1, +s.slice(8, 10) + n));
   const daysBetween = (a, b) => Math.round((new Date(b + 'T00:00:00') - new Date(a + 'T00:00:00')) / 864e5);
   const inr = (n) => '₹' + Math.round(n).toLocaleString('en-IN');
-  const fmt = (s) => new Date(s.slice(0, 10) + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+  const fmt = (s) => new Date(s.slice(0, 10) + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }).replace(' ', '\u00a0');   // non-breaking space: a date never splits over two lines
 
   const STATUS = {
     upcoming:  { label: 'Upcoming',      cls: 'blue' },

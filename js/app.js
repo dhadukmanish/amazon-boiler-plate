@@ -22,7 +22,12 @@
   // Nav: collapse (desktop) / drawer (mobile)
   document.querySelector('[data-toggle-nav]')?.addEventListener('click', () => {
     if (window.matchMedia('(max-width: 800px)').matches) app.classList.toggle('nav-open');
+    else if (window.matchMedia('(max-width: 1199px)').matches) app.classList.toggle('nav-expanded');   // small laptops / tablets start with the icon-only menu
     else app.classList.toggle('nav-collapsed');
+  });
+  // Phones: tapping outside the open menu closes it
+  document.addEventListener('click', (e) => {
+    if (app && app.classList.contains('nav-open') && !e.target.closest('.sidenav, [data-toggle-nav]')) app.classList.remove('nav-open');
   });
 
   // Tabs

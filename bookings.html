@@ -72,7 +72,7 @@
     function renderList() {
       $('rows').innerHTML = sorted().map((b) => { const o = RR.outfitById(b.outfit) || { id: b.outfit, name: '' }, st = STATUS[b.status];
         return `<tr data-status="${b.status}"><td><a href="booking.html?id=${b.no}">${b.id}</a></td>
-          <td><a href="customer.html?id=${b.customerId}">${esc(b.customer)}</a><br><span class="muted">${esc(b.phone)}</span></td>
+          <td><a href="customer.html?id=${b.customerId}">${esc(b.customer)}</a><br><span class="muted nowrap">${esc(b.phone)}</span></td>
           <td><a href="outfit.html?id=${o.id}">${esc(o.name)}</a> <span class="muted">${o.id}</span></td><td>${fmt(b.from)}</td><td>${fmt(b.to)}</td>
           <td><span class="indicator ${st.cls}">${b.status === 'overdue' ? 'Overdue ' + b.lateDays + (b.lateDays > 1 ? ' days' : ' day') : st.label}</span></td>
           <td class="num">${b.due + b.lateFee ? inr(b.due + b.lateFee) : '₹0'}</td><td>${action(b)}</td></tr>`; }).join('') || '<tr><td colspan="8" class="muted">No bookings yet.</td></tr>';

@@ -59,7 +59,8 @@
 .tile .ic { font-size: 30px; width: 52px; height: 52px; display: grid; place-items: center; border-radius: 14px; background: var(--c-primary-100); }
 .tile strong { display: block; font-size: var(--fs-lg); }
 .tile span.sub { color: var(--c-text-muted); font-size: var(--fs-sm); }
-.tile.primary .ic { background: #fdebd9; }
+.tile.primary .ic { background: #fdebd9; color: var(--c-accent-700); }
+:root[data-theme="dark"] .tile.primary .ic { background: #3a2410; color: #ffb27a; }
 @media (max-width: 1100px) { .quick-tiles { grid-template-columns: repeat(2, minmax(0,1fr)); } }
 @media (max-width: 600px)  { .quick-tiles { grid-template-columns: 1fr; } }
 

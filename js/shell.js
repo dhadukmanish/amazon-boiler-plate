@@ -76,13 +76,14 @@
   app.innerHTML = `
     <header class="topbar">
       <button class="menu-btn" data-toggle-nav aria-label="Menu">${ic('menu')}</button>
-      <a class="brand" href="index.html"><span class="brand-mark">${ic('gem')}</span> <span id="brand-name">Pratishtha Bridal</span></a>
+      <a class="brand" href="index.html"><span class="brand-mark">${ic('gem')}</span> <span class="brand-name" id="brand-name">Pratishtha Bridal</span></a>
       <label class="search">${ic('search')}
         <input placeholder="Search piece number, name or customer" aria-label="Search"><kbd>Ctrl K</kbd></label>
       <span class="spacer"></span>
+      <button class="icon-btn search-mini" data-search-open title="Search" aria-label="Search">${ic('search')}</button>
       <button class="icon-btn" data-scan title="Scan a piece tag" aria-label="Scan a piece tag">${ic('scan')}</button>
       <span class="indicator orange demo-pill" id="demo-pill" hidden title="Sample data kept only in this browser">Demo data</span>
-      <a class="btn btn-primary btn-sm" id="top-new" data-perm="create_booking" href="booking-new.html">${ic('plus')} New booking</a>
+      <a class="btn btn-primary btn-sm" id="top-new" data-perm="create_booking" href="booking-new.html" title="New booking">${ic('plus')}<span class="lbl"> New booking</span></a>
       <button class="icon-btn" data-toggle-density title="Compact / comfortable" aria-label="Toggle density">${ic('rows')}</button>
       <button class="icon-btn" data-toggle-theme title="Dark / light" aria-label="Toggle theme">${ic('contrast')}</button>
       <details class="menu user-menu" id="user-menu"><summary class="user-chip"><span class="avatar md c0" id="u-av">…</span><span class="uname" id="u-name"></span>${ic('chevronDown')}</summary>
@@ -380,4 +381,5 @@
 
   const sbox = app.querySelector('.topbar .search input');
   sbox.addEventListener('focus', () => { sbox.blur(); open(); });
+  app.querySelector('[data-search-open]').addEventListener('click', open);   // phones: the search box is hidden, this icon opens the same search
 })();
