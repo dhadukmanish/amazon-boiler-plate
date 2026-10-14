@@ -1,0 +1,355 @@
+<!doctype html>
+<html lang="en" data-theme="light" data-density="comfortable">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27%3E%3Cpath d=%27M6 3h12l4 6-10 12L2 9Z%27 fill=%27%23ec7211%27/%3E%3C/svg%3E">
+  <title>Settings · Pratishtha Bridal</title>
+  <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/tokens.css">
+  <link rel="stylesheet" href="css/layout.css">
+  <link rel="stylesheet" href="css/components.css">
+  <link rel="stylesheet" href="css/rental.css">
+</head>
+<body data-active="settings" data-perm="manage_settings manage_users view_audit">
+<div id="page">
+  <div class="doc-head">
+    <h1>Settings</h1>
+    <span class="indicator orange" data-indicator hidden>Not Saved</span>
+    <span class="spacer"></span>
+    <button class="btn btn-primary btn-sm" id="savebtn" data-save>Save <kbd>Ctrl S</kbd></button>
+  </div>
+
+  <div class="card" data-form id="form">
+    <div data-tabs class="tabs" id="tabs" role="tablist" style="padding:0 var(--card-pad);overflow-x:auto">
+      <button class="tab" role="tab" aria-selected="true" data-panel="s-shop">Shop</button>
+      <button class="tab" role="tab" aria-selected="false" data-panel="s-rules">Rental rules</button>
+      <button class="tab" role="tab" aria-selected="false" data-panel="s-pay">Payments &amp; slips</button>
+      <button class="tab" role="tab" aria-selected="false" data-panel="s-msg">WhatsApp messages</button>
+      <button class="tab" role="tab" aria-selected="false" data-panel="s-salon">Salon: artists &amp; prices</button>
+      <button class="tab" role="tab" aria-selected="false" data-panel="s-users">Users</button>
+      <button class="tab" role="tab" aria-selected="false" data-panel="s-roles">Roles &amp; permissions</button>
+      <button class="tab" role="tab" aria-selected="false" data-panel="s-audit">Activity log</button>
+      <button class="tab" role="tab" aria-selected="false" data-panel="s-look">Appearance &amp; data</button>
+    </div>
+
+    <section class="card-body tab-panel" id="s-shop">
+      <div class="form-grid">
+        <div class="field"><label for="shopName">Shop name</label><input id="shopName" class="input" data-k="shopName"></div>
+        <div class="field"><label for="phone">Phone</label><input id="phone" class="input" data-k="phone"></div>
+        <div class="field" style="grid-column:1/-1"><label for="address">Address</label><textarea id="address" class="textarea" data-k="address"></textarea><span class="hint">Printed on booking slips and receipts.</span></div>
+        <div class="field"><label for="gstin">GSTIN (optional)</label><input id="gstin" class="input" data-k="gstin" placeholder="24ABCDE1234F1Z5"></div>
+      </div>
+    </section>
+
+    <section class="card-body tab-panel" id="s-rules" hidden>
+      <div class="form-grid">
+        <div class="field"><label for="minDays">Minimum rental days</label><input id="minDays" class="input" type="number" min="1" data-k="minDays" data-n></div>
+        <div class="field"><label for="graceHours">Grace period after return time (hours)</label><input id="graceHours" class="input" type="number" min="0" data-k="graceHours" data-n><span class="hint">Printed on the slip. Late fee starts after the return date.</span></div>
+        <div class="field"><label for="lateFeePerDay">Late fee per day (₹)</label><input id="lateFeePerDay" class="input" type="number" min="0" data-k="lateFeePerDay" data-n><span class="hint">Added automatically when a return is overdue. Only people with “Charge more late fee than the daily rate” can go above it.</span></div>
+        <div class="field"><label for="advancePct">Suggested advance (% of rent)</label><input id="advancePct" class="input" type="number" min="0" max="100" data-k="advancePct" data-n><span class="hint">The booking form suggests deposit + this % of rent.</span></div>
+        <div class="alert info" style="grid-column:1/-1"><div><strong>Always on</strong>A piece can never be booked twice for overlapping dates, and the day after a return is kept free for cleaning. This is enforced by the database and cannot be switched off.</div></div>
+      </div>
+    </section>
+
+    <section class="card-body tab-panel" id="s-pay" hidden>
+      <div class="form-grid">
+        <div class="field"><label for="upi">UPI ID</label><input id="upi" class="input" data-k="upi" placeholder="shop@upi"></div>
+        <div class="field"><label for="receiptPrefix">Receipt prefix</label><input id="receiptPrefix" class="input" data-k="receiptPrefix"><span class="hint">Receipts look like RC-2087.</span></div>
+        <div class="field" style="grid-column:1/-1"><label for="terms">Terms printed on the booking slip (one per line)</label><textarea id="terms" class="textarea" style="min-height:150px" data-k="terms" data-lines></textarea></div>
+        <div class="field" style="grid-column:1/-1"><label for="salonTerms">Terms printed on wedding quotations / invoices (one per line)</label><textarea id="salonTerms" class="textarea" style="min-height:130px" data-k="salonTerms" data-lines></textarea></div>
+      </div>
+    </section>
+
+    <section class="card-body tab-panel" id="s-msg" hidden>
+      <div class="form-grid">
+        <div class="field" style="grid-column:1/-1"><label for="msgConfirm">Booking confirmation message</label><textarea id="msgConfirm" class="textarea" data-k="msgConfirm"></textarea></div>
+        <div class="field" style="grid-column:1/-1"><label for="msgOverdue">Overdue return message</label><textarea id="msgOverdue" class="textarea" data-k="msgOverdue"></textarea></div>
+        <div class="alert info" style="grid-column:1/-1"><div><strong>How these are sent</strong>The WhatsApp buttons open WhatsApp with the message filled in; you press send. Variables: <code>{customer}</code> <code>{piece}</code> <code>{outfit}</code> <code>{booking}</code> <code>{pickup}</code> <code>{return_date}</code> <code>{late_fee}</code> <code>{balance}</code> <code>{shop}</code></div></div>
+        <div class="field" style="grid-column:1/-1"><label>Preview (sample booking)</label><div id="msgPreview" style="background:var(--c-bg-subtle);border:1px solid var(--c-border);border-radius:var(--radius-md);padding:var(--s-3)"></div></div>
+      </div>
+    </section>
+
+    <!-- SALON: artists + price list (saved immediately, no Save button needed) -->
+    <section class="tab-panel" id="s-salon" hidden>
+      <div class="toolbar"><strong>Artists</strong><span class="grow muted">People who do makeup, hair and mehendi. Each function can be assigned to one.</span><button class="btn btn-sm" id="add-artist"><i data-icon="plus"></i> Add artist</button></div>
+      <div class="table-wrap"><table class="table"><thead><tr><th>Name</th><th>Skill</th><th>Phone</th><th>Active</th><th></th></tr></thead><tbody id="artists"></tbody></table></div>
+      <div class="toolbar" style="border-top:1px solid var(--c-border)"><strong>Price list</strong><span class="grow muted">What you charge. When you add a service to a wedding, the price comes from here (you can still change it for that wedding).</span><button class="btn btn-sm" id="add-service"><i data-icon="plus"></i> Add service</button></div>
+      <div class="table-wrap"><table class="table"><thead><tr><th>Service</th><th>Category</th><th class="num">Price</th><th class="num">Time</th><th>Active</th><th></th></tr></thead><tbody id="services"></tbody></table></div>
+    </section>
+
+    <!-- USERS -->
+    <section class="tab-panel" id="s-users" hidden>
+      <div class="toolbar"><span class="grow muted">People who can sign in. A person's role decides what they may do (see “Roles &amp; permissions”).</span><button class="btn btn-sm" id="adduser"><i data-icon="plus"></i> Add user</button></div>
+      <div class="table-wrap"><table class="table">
+        <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Active</th><th>Access</th></tr></thead>
+        <tbody id="users"></tbody></table></div>
+    </section>
+
+    <!-- ROLES & PERMISSIONS -->
+    <section class="tab-panel" id="s-roles" hidden>
+      <div class="role-cards" id="rolecards"></div>
+      <div class="card-body" style="padding-top:0"><div class="alert info"><div><strong>How this works</strong>Tick what each role may do. The owner always has everything and cannot be restricted. Changes apply the next time that person opens or refreshes a page. The same rules are enforced by the database, so hiding a button is never the only protection.</div></div></div>
+      <div class="table-wrap"><table class="table perm-table">
+        <thead><tr><th>Permission</th><th class="c">Owner</th><th class="c">Counter staff</th><th class="c">Stock keeper</th></tr></thead>
+        <tbody id="matrix"></tbody></table></div>
+      <div class="perm-bar" id="permbar" hidden>
+        <span id="permsummary"></span>
+        <span class="actions"><button class="btn btn-sm" id="permdiscard">Discard</button><button class="btn btn-primary btn-sm" id="permsave">Save permissions</button></span>
+      </div>
+      <div class="card-footer"><span class="hint-line">Not sure? <button class="btn btn-link btn-sm" id="permreset">Reset both roles to the recommended defaults</button></span></div>
+    </section>
+
+    <!-- ACTIVITY LOG -->
+    <section class="tab-panel" id="s-audit" hidden>
+      <div class="toolbar">
+        <input class="input" id="auditq" placeholder="Search who or what" aria-label="Search activity" style="max-width:260px">
+        <select class="select" id="auditf" aria-label="Filter by action" style="width:auto"><option value="">All actions</option></select>
+        <span class="grow"></span><button class="btn btn-sm" id="auditrefresh">Refresh</button>
+      </div>
+      <div class="table-wrap"><table class="table"><thead><tr><th>When</th><th>Who</th><th>What happened</th></tr></thead><tbody id="audit"></tbody></table></div>
+      <div class="card-footer"><span class="muted" id="auditfoot"></span></div>
+    </section>
+
+    <section class="card-body tab-panel" id="s-look" hidden>
+      <div class="form-grid">
+        <div class="field"><label>Theme</label><div><button class="btn btn-sm" type="button" data-toggle-theme>Switch light / dark</button></div></div>
+        <div class="field"><label>Row density</label><div><button class="btn btn-sm" type="button" data-toggle-density>Switch comfortable / compact</button></div><span class="hint">Compact fits more rows on screen.</span></div>
+        <div class="field" style="grid-column:1/-1" id="dataBox"></div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script src="js/config.js"></script>
+<script src="js/data.js"></script>
+<script src="js/api.js"></script>
+<script src="js/shell.js"></script>
+<script>
+  RR.ready.then(async () => {
+    const { esc, PERMS, PERM_NEEDS, ROLES, DEFAULT_PERMS, inr } = RR, api = RR.api, $ = (id) => document.getElementById(id), S = RR.SETTINGS;
+    const ALLK = PERMS.map((p) => p.key), isOwner = api.role === 'owner', pad4 = (n) => String(n).padStart(4, '0');
+    const label = (k) => (PERMS.find((p) => p.key === k) || { label: k }).label;
+    const TAB_PERMS = { 's-shop': ['manage_settings'], 's-rules': ['manage_settings'], 's-pay': ['manage_settings'], 's-msg': ['manage_settings'], 's-salon': ['manage_salon'], 's-users': ['manage_users'], 's-roles': ['manage_users'], 's-audit': ['view_audit'], 's-look': [] };
+    const SETTINGS_PANELS = ['s-shop', 's-rules', 's-pay', 's-msg'];
+    const tabs = [...document.querySelectorAll('#tabs .tab')];
+    let settingsDirty = false, rolesDirty = false;
+
+    /* ---------- which tabs this person may see ---------- */
+    const activePanel = () => (tabs.find((t) => t.getAttribute('aria-selected') === 'true') || {}).dataset?.panel;
+    const syncSaveUi = () => {
+      const p = activePanel();
+      $('savebtn').hidden = !(SETTINGS_PANELS.includes(p) && api.has('manage_settings'));
+      document.querySelector('[data-indicator]').hidden = !(settingsDirty && SETTINGS_PANELS.includes(p)) && !(rolesDirty && p === 's-roles');
+    };
+    const applyTabs = () => {
+      tabs.forEach((t) => { const need = TAB_PERMS[t.dataset.panel]; t.hidden = need.length > 0 && !api.hasAny(...need); });
+      const cur = tabs.find((t) => t.getAttribute('aria-selected') === 'true' && !t.hidden) || tabs.find((t) => !t.hidden);
+      if (cur) cur.click();
+      syncSaveUi();
+    };
+    $('tabs').addEventListener('click', () => setTimeout(() => { syncSaveUi(); if (activePanel() === 's-audit') loadAudit(); }, 0));
+
+    /* ---------- shop settings ---------- */
+    const fields = [...document.querySelectorAll('[data-k]')];
+    const canEditSettings = api.has('manage_settings');
+    fields.forEach((f) => { f.disabled = !canEditSettings; });
+    function loadSettings() {
+      fields.forEach((f) => { const v = S[f.dataset.k]; f.value = f.hasAttribute('data-lines') ? (v || []).join('\n') : (v == null ? '' : v); });
+      preview();
+    }
+    function preview() {
+      const sample = RR.BOOKINGS.find((b) => b.status === 'overdue') || RR.BOOKINGS[0]; if (!sample) { $('msgPreview').textContent = ''; return; }
+      const saved = [S.msgConfirm, S.msgOverdue]; S.msgConfirm = $('msgConfirm').value; S.msgOverdue = $('msgOverdue').value;
+      try { $('msgPreview').textContent = decodeURIComponent(RR.waLink('overdue', sample).split('?text=')[1]); } finally { [S.msgConfirm, S.msgOverdue] = saved; }
+    }
+    loadSettings();
+    $('form').addEventListener('input', (e) => {
+      if (e.target.matches('[data-k]')) settingsDirty = true;
+      if (e.target.id === 'msgConfirm' || e.target.id === 'msgOverdue') preview();
+      setTimeout(syncSaveUi, 0);                                    // app.js shows the indicator after us; this decides whether it stays
+    });
+
+    async function saveSettings() {
+      const out = {};
+      for (const f of fields) {
+        const k = f.dataset.k; let v = f.value;
+        if (f.hasAttribute('data-n')) { v = Number(v); if (!Number.isFinite(v) || v < 0) { toast('Check the number in “' + f.closest('.field').querySelector('label').textContent + '”'); f.focus(); return; } }
+        if (f.hasAttribute('data-lines')) v = v.split('\n').map((x) => x.trim()).filter(Boolean);
+        out[k] = v;
+      }
+      if (!String(out.shopName).trim()) { toast('Shop name cannot be empty'); return; }
+      try { await api.saveSettings(out); settingsDirty = false; syncSaveUi(); toast('Settings saved'); } catch (err) { toast(err.message); }
+    }
+    // Save button / Ctrl+S: the page decides what "save" means on the tab you are looking at
+    $('form').addEventListener('rr:save', (e) => {
+      e.preventDefault(); const p = activePanel();
+      if (p === 's-roles') { if (rolesDirty) askSaveRoles(); else toast('No permission changes to save'); }
+      else if (SETTINGS_PANELS.includes(p) && canEditSettings) saveSettings();
+    });
+
+    /* ---------- roles & permissions ---------- */
+    let state = { staff: new Set(), stock: new Set() }, orig = { staff: new Set(), stock: new Set() }, users = [];
+    const clone = (s) => ({ staff: new Set(s.staff), stock: new Set(s.stock) });
+    const permsOfRole = (role, src = orig) => (role === 'owner' ? new Set(ALLK) : src[role]);
+    // a person who is not the owner may only hand out permissions they hold themselves (and never "Manage users"): the database enforces it too
+    const canGive = (k) => isOwner || (api.has(k) && k !== 'manage_users');
+    const needsOf = (k, acc = new Set()) => { (PERM_NEEDS[k] || []).forEach((n) => { if (!acc.has(n)) { acc.add(n); needsOf(n, acc); } }); return acc; };
+    const dependents = (k, acc = new Set()) => { Object.entries(PERM_NEEDS).forEach(([p, needs]) => { if (needs.includes(k) && !acc.has(p)) { acc.add(p); dependents(p, acc); } }); return acc; };
+    const diff = (role) => ({ add: ALLK.filter((k) => state[role].has(k) && !orig[role].has(k)), del: ALLK.filter((k) => !state[role].has(k) && orig[role].has(k)) });
+
+    async function loadRoles() {
+      const rp = await api.getRolePermissions();
+      state = { staff: new Set(rp.staff), stock: new Set(rp.stock) }; orig = clone(state);
+      try { users = await api.listUsers(); } catch (e) { users = []; }
+      rolesDirty = false; renderRoles(); renderUsers(); syncSaveUi();
+    }
+    function renderRoles() {
+      $('rolecards').innerHTML = ['owner', 'staff', 'stock'].map((r) => {
+        const n = permsOfRole(r, state).size, people = users.filter((u) => u.role === r && u.active);
+        return `<div class="role-card"><h3>${esc(ROLES[r].label)} ${r === 'owner' ? '<span class="indicator green">fixed</span>' : ''}</h3><span class="muted" style="font-size:var(--fs-sm)">${esc(ROLES[r].blurb)}</span>
+          <div class="meter" aria-hidden="true"><i style="width:${n / ALLK.length * 100}%"></i></div><span style="font-size:var(--fs-sm)"><strong>${n}</strong> of ${ALLK.length} permissions</span>
+          <div class="who-list">${people.length ? people.map((u) => `<span class="tag-chip">${esc(u.name)}</span>`).join('') : '<span class="muted" style="font-size:var(--fs-xs)">no one yet</span>'}</div></div>`;
+      }).join('');
+      let html = '', grp = '';
+      PERMS.forEach((p) => {
+        if (p.grp !== grp) { grp = p.grp; html += `<tr class="grp"><td colspan="4">${esc(grp)}</td></tr>`; }
+        const needs = [...needsOf(p.key)].map(label);
+        const cell = (r) => { const on = state[r].has(p.key), locked = !isOwner && (!api.has(p.key) || p.key === 'manage_users');
+          return `<td class="c"><label class="switch" title="${locked ? 'You can only change permissions you hold yourself' : ''}"><input type="checkbox" data-role="${r}" data-perm="${p.key}" ${on ? 'checked' : ''} ${locked ? 'disabled' : ''} aria-label="${esc(ROLES[r].label)}: ${esc(p.label)}"><span></span></label></td>`; };
+        const changed = ['staff', 'stock'].some((r) => state[r].has(p.key) !== orig[r].has(p.key));
+        html += `<tr class="${changed ? 'changed' : ''}"><td><strong>${esc(p.label)}</strong><small>${esc(p.description)}${needs.length ? ` <span class="needs">Needs: ${esc(needs.join(', '))}.</span>` : ''}</small></td><td class="c"><span class="lock" title="The owner always has this">✓</span></td>${cell('staff')}${cell('stock')}</tr>`;
+      });
+      $('matrix').innerHTML = html;
+      const changes = ['staff', 'stock'].reduce((a, r) => a + diff(r).add.length + diff(r).del.length, 0);
+      rolesDirty = changes > 0; $('permbar').hidden = !rolesDirty;
+      $('permsummary').innerHTML = `<strong>${changes}</strong> unsaved change${changes === 1 ? '' : 's'}`;
+      $('permreset').hidden = !isOwner; syncSaveUi();
+    }
+    $('matrix').addEventListener('change', (e) => {
+      const i = e.target; if (!i.dataset.perm) return; const role = i.dataset.role, k = i.dataset.perm, extra = [];
+      if (i.checked) { state[role].add(k); needsOf(k).forEach((n) => { if (!state[role].has(n)) { if (canGive(n)) { state[role].add(n); extra.push(label(n)); } } }); if (extra.length) toast('Also switched on: ' + extra.join(', ')); }
+      else { state[role].delete(k); dependents(k).forEach((d) => { if (state[role].has(d)) { state[role].delete(d); extra.push(label(d)); } }); if (extra.length) toast('Also switched off: ' + extra.join(', ')); }
+      renderRoles();
+    });
+    $('permdiscard').addEventListener('click', () => { state = clone(orig); renderRoles(); });
+    $('permreset').addEventListener('click', () => RR.ui.modal({ title: 'Reset to recommended defaults?', confirm: 'Reset', body: '<p style="margin:0">Counter staff and Stock keeper go back to the permissions we recommend. Nothing is saved until you press “Save permissions”.</p>',
+      onConfirm: () => { state = { staff: new Set(DEFAULT_PERMS.staff), stock: new Set(DEFAULT_PERMS.stock) }; renderRoles(); } }));
+
+    function askSaveRoles() {
+      const lines = ['staff', 'stock'].map((r) => ({ r, d: diff(r) })).filter((x) => x.d.add.length || x.d.del.length)
+        .map(({ r, d }) => `<div style="margin-bottom:10px"><strong>${esc(ROLES[r].label)}</strong> (${(n => n + (n === 1 ? " person" : " people"))(users.filter((u) => u.role === r && u.active).length)})${d.add.length ? `<div style="color:var(--c-success)">+ ${esc(d.add.map(label).join(', '))}</div>` : ''}${d.del.length ? `<div style="color:var(--c-danger)">− ${esc(d.del.map(label).join(', '))}</div>` : ''}</div>`).join('');
+      RR.ui.modal({ title: 'Save these permission changes?', confirm: 'Save permissions', body: lines + '<p class="hint-line" style="margin:6px 0 0">People already signed in get the new access when they refresh or open another page.</p>',
+        onConfirm: async () => {
+          for (const r of ['staff', 'stock']) { const d = diff(r); if (d.add.length || d.del.length) await api.setRolePermissions(r, [...state[r]]); }
+          toast('Permissions saved');
+          if (!api.has('manage_users')) { location.reload(); return; }          // you removed your own access to this tab
+          await loadRoles();
+        } });
+    }
+    $('permsave').addEventListener('click', askSaveRoles);
+
+    /* ---------- users ---------- */
+    const accessModal = (u) => { const set = permsOfRole(u.role), groups = [...new Set(PERMS.map((p) => p.grp))];
+      RR.ui.modal({ title: `${esc(u.name)}: access`, confirm: 'Close', cancel: '', onConfirm: () => {},
+        body: `<p style="margin:0 0 8px">Role: <strong>${esc(ROLES[u.role].label)}</strong>${u.active ? '' : ' · <span class="indicator red">switched off: cannot sign in</span>'}</p>` +
+          groups.map((g) => `<h3 style="font-size:var(--fs-sm);margin:10px 0 2px" class="muted">${esc(g)}</h3>` + PERMS.filter((p) => p.grp === g).map((p) => `<div class="list-row" style="padding:5px 0"><span>${esc(p.label)}</span><span class="indicator ${set.has(p.key) ? 'green' : ''}">${set.has(p.key) ? 'Allowed' : 'No'}</span></div>`).join('')).join('') }); };
+    function renderUsers() {
+      $('users').innerHTML = users.map((u) => { const me = u.id === (api.user && api.user.id), lockRole = me || (u.role === 'owner' && !isOwner);
+        const n = permsOfRole(u.role).size;
+        return `<tr><td>${esc(u.name)}${me ? ' <span class="muted">(you)</span>' : ''}</td><td>${esc(u.email)}</td>
+          <td><select class="select" data-urole="${u.id}" style="width:auto" ${lockRole ? 'disabled' : ''}>${Object.keys(ROLES).filter((r) => isOwner || r !== 'owner').map((r) => `<option value="${r}" ${r === u.role ? 'selected' : ''}>${esc(ROLES[r].label)}</option>`).join('')}${!isOwner && u.role === 'owner' ? `<option value="owner" selected>${esc(ROLES.owner.label)}</option>` : ''}</select></td>
+          <td><label class="check"><span class="switch"><input type="checkbox" data-uactive="${u.id}" ${u.active ? 'checked' : ''} ${me || (u.role === 'owner' && !isOwner) ? 'disabled' : ''}><span></span></span></label></td>
+          <td><button class="btn btn-sm" data-access="${u.id}">${n} of ${ALLK.length} · view</button></td></tr>`; }).join('') || '<tr><td colspan="5" class="muted">No users.</td></tr>';
+    }
+    $('users').addEventListener('click', (e) => { const b = e.target.closest('[data-access]'); if (b) accessModal(users.find((u) => u.id === b.dataset.access)); });
+    $('users').addEventListener('change', (e) => {
+      const id = e.target.dataset.urole || e.target.dataset.uactive; if (!id) return;
+      const u = users.find((x) => x.id === id), row = e.target.closest('tr'), role = row.querySelector('[data-urole]').value, active = row.querySelector('[data-uactive]').checked;
+      const before = permsOfRole(u.role), after = permsOfRole(role), lose = ALLK.filter((k) => before.has(k) && !after.has(k)), gain = ALLK.filter((k) => !before.has(k) && after.has(k));
+      const apply = async () => { await api.setUserRole(id, role, active); toast('User updated'); await loadRoles(); };
+      const sentence = !active && u.active ? `<strong>${esc(u.name)}</strong> will be switched off and can no longer sign in.`
+        : active && !u.active ? `<strong>${esc(u.name)}</strong> will be able to sign in again as <strong>${esc(ROLES[role].label)}</strong>.`
+        : `<strong>${esc(u.name)}</strong> changes from <strong>${esc(ROLES[u.role].label)}</strong> to <strong>${esc(ROLES[role].label)}</strong>.`;
+      RR.ui.modal({ title: 'Change this user?', confirm: 'Yes, change', body: `<p style="margin:0 0 8px">${sentence}</p>${gain.length ? `<div style="color:var(--c-success)">Gains: ${esc(gain.map(label).join(', '))}</div>` : ''}${lose.length ? `<div style="color:var(--c-danger)">Loses: ${esc(lose.map(label).join(', '))}</div>` : ''}`,
+        onConfirm: apply });
+      // closing the popup without confirming must put the control back
+      const m = document.querySelector('.modal-backdrop.open'); const restore = () => setTimeout(() => { if (!document.contains(m)) renderUsers(); }, 0);
+      m.addEventListener('click', restore); m.addEventListener('keydown', restore);
+    });
+    $('adduser').addEventListener('click', () => RR.ui.modal({ title: 'Add a user', confirm: 'Got it', cancel: 'Close',
+      body: api.live
+        ? '<ol style="margin:0;padding-left:18px;line-height:1.7"><li>In Supabase open <strong>Authentication → Users → Add user</strong>, enter their email and a password, and tick “Auto confirm”.</li><li>Come back here and refresh: they appear in this list as <em>Counter staff</em>.</li><li>Change their role here if needed.</li></ol><p class="muted" style="margin-bottom:0">New users cannot sign themselves up: public sign-up must stay switched off.</p>'
+        : '<p style="margin:0">This is demo mode, so users are examples only. In live mode you add people in Supabase (Authentication → Users) and set their role here. See SUPABASE.md.</p>',
+      onConfirm: () => {} }));
+
+    /* ---------- activity log ---------- */
+    const SENT = {
+      create_booking: (d) => `Created booking BK-${pad4(d.booking)} for piece ${d.piece}${d.advance ? ' (advance ' + inr(d.advance) + ')' : ''}`,
+      hand_over: (d) => `Handed over BK-${pad4(d.booking)}${d.collected ? ', collected ' + inr(d.collected) : ''}`,
+      complete_return: (d) => `Received the return of BK-${pad4(d.booking)}: ${d.net >= 0 ? 'refunded ' + inr(d.net) : 'collected ' + inr(-d.net)}${d.late ? ', late fee ' + inr(d.late) : ''}${d.damage ? ', damage ' + inr(d.damage) : ''}`,
+      record_payment: (d) => `Recorded ${String(d.type || '').replace('_', ' ')} ${inr(d.amount || 0)} on BK-${pad4(d.booking)}`,
+      cancel_booking: (d) => `Cancelled BK-${pad4(d.booking)}`,
+      add_customer: (d) => `Added customer #${d.customer}`, update_customer: (d) => `Edited customer #${d.customer}`,
+      upsert_outfit: (d) => `Saved piece ${d.piece}`, set_outfit_status: (d) => `Piece ${d.piece} marked ${d.status}`,
+      save_settings: () => 'Changed shop settings',
+      set_user_role: (d) => { const u = users.find((x) => x.id === d.user); return `${u ? u.name : 'A user'} set to ${ROLES[d.role] ? ROLES[d.role].label : d.role}${d.active === false ? ' and switched off' : ''}`; },
+      set_role_permissions: (d) => `Changed permissions of ${ROLES[d.role] ? ROLES[d.role].label : d.role} (now ${(d.permissions || []).length} allowed)`,
+    };
+    let auditRows = [];
+    async function loadAudit() {
+      try { auditRows = await api.listAudit(300); } catch (e) { $('audit').innerHTML = `<tr><td colspan="3" class="muted">${esc(e.message)}</td></tr>`; return; }
+      const acts = [...new Set(auditRows.map((a) => a.action))].sort(); const cur = $('auditf').value;
+      $('auditf').innerHTML = '<option value="">All actions</option>' + acts.map((a) => `<option value="${a}">${esc((SENT[a] ? a : a).replace(/_/g, ' '))}</option>`).join(''); $('auditf').value = acts.includes(cur) ? cur : '';
+      renderAudit();
+    }
+    function renderAudit() {
+      const q = $('auditq').value.trim().toLowerCase(), f = $('auditf').value;
+      const text = (a) => (SENT[a.action] ? SENT[a.action](a.details || {}) : a.action.replace(/_/g, ' '));
+      const rows = auditRows.filter((a) => (!f || a.action === f) && (!q || (a.who + ' ' + text(a)).toLowerCase().includes(q)));
+      $('audit').innerHTML = rows.map((a) => `<tr><td style="white-space:nowrap">${new Date(a.at).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</td><td>${esc(a.who || '—')}</td><td style="white-space:normal">${esc(text(a))}</td></tr>`).join('') || '<tr><td colspan="3" class="muted">Nothing recorded yet. Bookings, payments, returns, customer and permission changes appear here.</td></tr>';
+      $('auditfoot').textContent = `${rows.length} of ${auditRows.length} entries (newest first, last 300)`;
+    }
+    $('auditq').addEventListener('input', renderAudit); $('auditf').addEventListener('change', renderAudit); $('auditrefresh').addEventListener('click', loadAudit);
+
+    /* ---------- salon: artists and price list ---------- */
+    const renderSalon = () => {
+      $('artists').innerHTML = RR.ARTISTS.map((a) => `<tr><td><span class="who"><span class="avatar md c${a.id % 6}">${esc(a.name.split(' ').map((x) => x[0]).join('').slice(0, 2))}</span>${esc(a.name)}</span></td><td>${esc(a.skill)}</td><td>${esc(a.phone) || '—'}</td>
+        <td><label class="check"><span class="switch"><input type="checkbox" data-art-active="${a.id}" ${a.active ? 'checked' : ''}><span></span></span></label></td><td><button class="btn btn-sm" data-art-edit="${a.id}">Edit</button></td></tr>`).join('') || '<tr><td colspan="5" class="muted">No artists yet.</td></tr>';
+      $('services').innerHTML = RR.SERVICES.map((x) => `<tr><td>${esc(x.name)}</td><td>${esc(x.category)}</td><td class="num">${inr(x.price)}</td><td class="num">${x.minutes} min</td>
+        <td><label class="check"><span class="switch"><input type="checkbox" data-svc-active="${x.id}" ${x.active ? 'checked' : ''}><span></span></span></label></td><td><button class="btn btn-sm" data-svc-edit="${x.id}">Edit</button></td></tr>`).join('') || '<tr><td colspan="6" class="muted">No services yet.</td></tr>';
+    };
+    const artistModal = (a) => RR.ui.modal({ title: a ? 'Edit artist' : 'Add artist', confirm: 'Save',
+      body: `<div class="form-grid"><div class="field"><label for="ar-n">Name</label><input id="ar-n" class="input" value="${esc(a ? a.name : '')}"></div><div class="field"><label for="ar-s">Skill</label><input id="ar-s" class="input" list="ar-sk" value="${esc(a ? a.skill : 'Makeup')}"><datalist id="ar-sk"><option>Makeup</option><option>Hair</option><option>Mehendi</option><option>Draping</option><option>Nails</option></datalist></div>
+        <div class="field"><label for="ar-p">Phone</label><input id="ar-p" class="input" value="${esc(a ? a.phone : '')}"></div></div>`,
+      onConfirm: async (el) => { const v = (k) => el.querySelector('#' + k).value; await api.saveArtist({ id: a && a.id, name: v('ar-n'), skill: v('ar-s'), phone: v('ar-p'), active: a ? a.active : true }); toast('Artist saved'); } });
+    const serviceModal = (x) => RR.ui.modal({ title: x ? 'Edit service' : 'Add service', confirm: 'Save',
+      body: `<div class="form-grid"><div class="field" style="grid-column:1/-1"><label for="sv-n">Service name</label><input id="sv-n" class="input" value="${esc(x ? x.name : '')}" placeholder="e.g. HD Bridal Makeup"></div>
+        <div class="field"><label for="sv-c">Category</label><input id="sv-c" class="input" list="sv-cats" value="${esc(x ? x.category : 'Makeup')}"><datalist id="sv-cats">${[...new Set(RR.SERVICES.map((y) => y.category))].map((c) => `<option value="${esc(c)}">`).join('')}</datalist></div>
+        <div class="field"><label for="sv-p">Price (₹)</label><input id="sv-p" class="input" type="number" min="0" value="${x ? x.price : ''}"></div>
+        <div class="field"><label for="sv-m">Time it takes (minutes)</label><input id="sv-m" class="input" type="number" min="5" value="${x ? x.minutes : 60}"></div></div>`,
+      onConfirm: async (el) => { const v = (k) => el.querySelector('#' + k).value; await api.saveService({ id: x && x.id, name: v('sv-n'), category: v('sv-c'), price: +v('sv-p'), minutes: +v('sv-m'), active: x ? x.active : true }); toast('Service saved'); } });
+    renderSalon();
+    $('add-artist').addEventListener('click', () => artistModal(null)); $('add-service').addEventListener('click', () => serviceModal(null));
+    $('artists').addEventListener('click', (e) => { const b = e.target.closest('[data-art-edit]'); if (b) artistModal(RR.artistById(b.dataset.artEdit)); });
+    $('services').addEventListener('click', (e) => { const b = e.target.closest('[data-svc-edit]'); if (b) serviceModal(RR.SERVICES.find((x) => x.id === +b.dataset.svcEdit)); });
+    $('s-salon').addEventListener('change', async (e) => {
+      try { if (e.target.dataset.artActive) { const a = RR.artistById(e.target.dataset.artActive); await api.saveArtist({ ...a, active: e.target.checked }); }
+        else if (e.target.dataset.svcActive) { const x = RR.SERVICES.find((y) => y.id === +e.target.dataset.svcActive); await api.saveService({ ...x, active: e.target.checked }); } } catch (err) { toast(err.message); renderSalon(); }
+    });
+    document.addEventListener('rr:data', renderSalon);
+
+    /* ---------- data box ---------- */
+    $('dataBox').innerHTML = api.live
+      ? `<div class="alert success"><div><strong>Connected to Supabase</strong>Signed in as ${esc(api.user.email)}. Data is shared by everyone who signs in.</div></div>`
+      : '<div class="alert warning"><div><strong>Demo data</strong>Everything you do is saved only in this browser. <button class="btn btn-sm" type="button" id="resetdemo" style="margin-left:8px">Reset demo data</button></div></div>';
+    const rd = $('resetdemo'); if (rd) rd.addEventListener('click', () => api.resetDemo());
+
+    applyTabs();
+    if (api.has('manage_users')) await loadRoles(); else { try { const rp = await api.getRolePermissions(); orig = { staff: new Set(rp.staff), stock: new Set(rp.stock) }; } catch (e) { /* not needed here */ } }
+    document.addEventListener('rr:data', () => { applyTabs(); });
+  });
+</script>
+<script src="js/app.js"></script>
+</body>
+</html>

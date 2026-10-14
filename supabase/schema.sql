@@ -1,0 +1,749 @@
+-- =====================================================================
+-- Pratishtha Bridal - database schema (Supabase / PostgreSQL)
+-- Run order in the Supabase SQL editor:  schema.sql -> storage.sql -> seed.sql (optional demo data)
+-- Roles:  owner = everything | staff = counter (bookings, returns, payments, customers) | stock = inventory only
+-- All writes by staff/stock go through the RPC functions below (they check the role and keep data consistent).
+-- =====================================================================
+create extension if not exists btree_gist;
+
+-- ---------- types ----------
+create type user_role      as enum ('owner', 'staff', 'stock');
+create type outfit_status  as enum ('available', 'rented', 'cleaning', 'repair');
+create type booking_status as enum ('upcoming', 'out', 'returned', 'cancelled');   -- "overdue" is derived (out + past return date)
+create type payment_type   as enum ('advance', 'deposit', 'balance', 'late_fee', 'damage', 'refund');
+create type pay_mode       as enum ('cash', 'upi', 'card', 'bank');
+create type item_state     as enum ('ok', 'minor', 'major', 'missing');
+create type wedding_status as enum ('enquiry', 'confirmed', 'completed', 'cancelled');
+create type event_kind     as enum ('trial', 'engagement', 'haldi', 'mehendi', 'sangeet', 'wedding', 'reception', 'photoshoot', 'other');
+
+-- ---------- tables ----------
+create table profiles (
+  id         uuid primary key references auth.users on delete cascade,
+  full_name  text not null default '',
+  email      text not null default '',
+  role       user_role not null default 'staff',
+  active     boolean not null default true,
+  created_at timestamptz not null default now()
+);
+
+create table shop_settings (
+  id              int primary key default 1 check (id = 1),     -- single row
+  shop_name       text not null default 'Pratishtha Bridal',
+  address         text not null default '',
+  phone           text not null default '',
+  gstin           text not null default '',
+  late_fee_per_day numeric(10,2) not null default 300,
+  grace_hours     int not null default 3,
+  deposit_pct     int not null default 30,
+  advance_pct     int not null default 50,
+  min_days        int not null default 1,
+  upi_id          text not null default '',
+  receipt_prefix  text not null default 'RC-',
+  terms           text[] not null default '{}',
+  -- WhatsApp message templates (sent through wa.me links). Variables: {customer} {piece} {outfit} {booking} {pickup} {return_date} {late_fee} {balance} {shop}
+  msg_confirm     text not null default 'Hi {customer}, your booking {booking} is confirmed: {outfit} (piece {piece}), {pickup} to {return_date}. Balance at pickup: {balance}. - {shop}',
+  msg_overdue     text not null default 'Hi {customer}, your outfit {outfit} (piece {piece}) was due on {return_date}. Please return it today to avoid more late fees of {late_fee}. - {shop}',
+  updated_at      timestamptz not null default now()
+);
+-- terms printed on a wedding quotation / invoice (the rental terms above are for booking slips)
+alter table shop_settings add column salon_terms text[] not null default array[
+  'An advance is needed to confirm the dates and is non-refundable.', 'The balance is payable before the first function of the wedding.',
+  'Trial is chargeable and is adjusted in the package if the booking is confirmed.', 'Artists are reserved for the booked times; extra time or extra people are charged separately.',
+  'Date changes depend on artist availability.'];
+insert into shop_settings (address, phone, terms) values (
+  '12, Ring Road, Surat, Gujarat 395002', '98250 00000',
+  array['Return the outfit by the date on the slip. Late return is charged per day after the grace period.',
+        'The deposit is refunded after inspection of the outfit, on safe return.',
+        'Stains, tears, missing pieces or damage are charged from the deposit.',
+        'No alteration without the shop''s permission. Do not wash or dry-clean.',
+        'ID proof is verified at pickup. Advance is non-refundable on cancellation within 24 hours of pickup.']);
+
+create table outfits (
+  piece_no     int primary key check (piece_no > 0),            -- the unique number written on the tag
+  name         text not null,
+  category     text not null,
+  size         text not null,
+  rent_per_day numeric(10,2) not null check (rent_per_day >= 0),
+  deposit      numeric(10,2) not null check (deposit >= 0),
+  color1       text not null default '#c62828',                 -- used for the generated design illustration
+  color2       text not null default '#ef6c00',
+  status       outfit_status not null default 'available',
+  note         text not null default '',
+  photo_path   text,                                            -- storage path in bucket piece-photos
+  active       boolean not null default true,
+  created_at   timestamptz not null default now()
+);
+
+create table outfit_photos (
+  id       bigint generated by default as identity primary key,
+  piece_no int not null references outfits on delete cascade,
+  path     text not null,
+  sort     int not null default 0
+);
+
+create table customers (
+  id         bigint generated by default as identity (start with 3001) primary key,
+  name       text not null check (length(trim(name)) > 0),
+  phone      text not null unique,
+  city       text not null default '',
+  id_proof   text not null default 'Aadhaar',
+  notes      text not null default '',
+  created_at timestamptz not null default now()
+);
+
+create table bookings (
+  id          bigint generated by default as identity (start with 1100) primary key,
+  piece_no    int    not null references outfits,
+  customer_id bigint not null references customers,
+  from_date   date   not null,
+  to_date     date   not null,
+  status      booking_status not null default 'upcoming',
+  rent        numeric(10,2) not null check (rent >= 0),
+  deposit     numeric(10,2) not null check (deposit >= 0),
+  notes       text not null default '',
+  created_by  uuid references auth.users,
+  created_at  timestamptz not null default now(),
+  check (to_date >= from_date),
+  -- the day after the return date is the cleaning buffer, so it is blocked too
+  block_range daterange generated always as (daterange(from_date, to_date + 1, '[]')) stored,
+  -- THE double-booking guard: two live bookings of one piece can never overlap, whatever the app does
+  constraint no_double_booking exclude using gist (piece_no with =, block_range with &&) where (status in ('upcoming', 'out'))
+);
+create index on bookings (piece_no);
+create index on bookings (customer_id);
+create index on bookings (status);
+create index on bookings (from_date);
+
+create table payments (
+  id          bigint generated by default as identity primary key,
+  booking_id  bigint not null references bookings,
+  type        payment_type not null,
+  mode        pay_mode not null default 'cash',
+  amount      numeric(10,2) not null check (amount > 0),
+  reference   text not null default '',
+  received_by uuid references auth.users,
+  created_at  timestamptz not null default now()
+);
+create index on payments (booking_id);
+
+create table returns (
+  id              bigint generated by default as identity primary key,
+  booking_id      bigint not null unique references bookings,
+  returned_on     date not null,
+  deposit_held    numeric(10,2) not null,
+  late_fee        numeric(10,2) not null default 0,
+  damage_total    numeric(10,2) not null default 0,
+  other_deduction numeric(10,2) not null default 0,
+  net_refund      numeric(10,2) not null,                       -- > 0 refunded to customer, < 0 collected from customer
+  mode            pay_mode not null default 'cash',
+  next_status     outfit_status not null,
+  notes           text not null default '',
+  handled_by      uuid references auth.users,
+  created_at      timestamptz not null default now()
+);
+create table return_items (
+  id        bigint generated by default as identity primary key,
+  return_id bigint not null references returns on delete cascade,
+  item      text not null,
+  state     item_state not null,
+  charge    numeric(10,2) not null default 0
+);
+create table return_photos (
+  id        bigint generated by default as identity primary key,
+  return_id bigint not null references returns on delete cascade,
+  path      text not null
+);
+
+create table booking_events (                                    -- timeline + comments on a booking
+  id         bigint generated by default as identity primary key,
+  booking_id bigint not null references bookings on delete cascade,
+  kind       text not null check (kind in ('created', 'payment', 'handover', 'return', 'comment', 'cancel')),
+  message    text not null,
+  created_by uuid references auth.users,
+  by_name    text not null default '',                          -- who did it, saved as text so people without access to profiles still see the name
+  created_at timestamptz not null default now()
+);
+create index on booking_events (booking_id);
+
+create table audit_log (
+  id      bigint generated by default as identity primary key,
+  at      timestamptz not null default now(),
+  user_id uuid,
+  by_name text not null default '',
+  action  text not null,
+  details jsonb not null default '{}'
+);
+
+-- ---------- bridal salon + wedding planning ----------
+-- A WEDDING is one bride's booking: her functions (trial, mehendi, haldi, wedding...) with date, time and artist, the salon services she bought,
+-- the outfits she rents (bookings linked through bookings.wedding_id), her payments and a checklist. The bride is a normal customer.
+create table artists (
+  id     bigint generated by default as identity primary key,
+  name   text not null check (length(trim(name)) > 0),
+  phone  text not null default '',
+  skill  text not null default 'Makeup',
+  active boolean not null default true
+);
+create table salon_services (                                     -- the price list
+  id       bigint generated by default as identity primary key,
+  name     text not null check (length(trim(name)) > 0),
+  category text not null default 'Makeup',
+  price    numeric(10,2) not null check (price >= 0),
+  minutes  int not null default 60 check (minutes > 0),
+  active   boolean not null default true
+);
+create table weddings (
+  id           bigint generated by default as identity (start with 5001) primary key,
+  customer_id  bigint not null references customers,
+  groom_name   text not null default '',
+  wedding_date date not null,
+  venue        text not null default '',
+  city         text not null default '',
+  status       wedding_status not null default 'enquiry',
+  discount     numeric(10,2) not null default 0 check (discount >= 0),
+  notes        text not null default '',
+  created_by   uuid references auth.users,
+  created_at   timestamptz not null default now()
+);
+create index on weddings (customer_id);
+create index on weddings (wedding_date);
+alter table bookings add column wedding_id bigint references weddings;     -- a rented outfit that belongs to a wedding
+create index on bookings (wedding_id);
+
+create table wedding_events (                                     -- one function: trial, mehendi, haldi, wedding...
+  id         bigint generated by default as identity primary key,
+  wedding_id bigint not null references weddings on delete cascade,
+  kind       event_kind not null default 'wedding',
+  title      text not null check (length(trim(title)) > 0),
+  event_date date not null,
+  start_time time,
+  end_time   time,
+  venue      text not null default '',
+  artist_id  bigint references artists,
+  people     int not null default 1 check (people > 0),
+  notes      text not null default '',
+  done       boolean not null default false,
+  check (end_time is null or start_time is null or end_time > start_time),
+  -- an artist cannot be at two functions at the same time, whatever the app does
+  constraint no_artist_clash exclude using gist (artist_id with =, tsrange(event_date + start_time, event_date + end_time) with &&)
+    where (artist_id is not null and start_time is not null and end_time is not null)
+);
+create index on wedding_events (wedding_id);
+create index on wedding_events (event_date);
+
+create table wedding_items (                                      -- a salon service sold to this wedding
+  id          bigint generated by default as identity primary key,
+  wedding_id  bigint not null references weddings on delete cascade,
+  event_id    bigint references wedding_events on delete set null,
+  service_id  bigint references salon_services on delete set null,
+  description text not null check (length(trim(description)) > 0),
+  qty         int not null default 1 check (qty > 0),
+  price       numeric(10,2) not null check (price >= 0)
+);
+create index on wedding_items (wedding_id);
+
+create table wedding_payments (
+  id          bigint generated by default as identity primary key,
+  wedding_id  bigint not null references weddings on delete cascade,
+  amount      numeric(10,2) not null check (amount > 0),
+  mode        pay_mode not null default 'cash',
+  note        text not null default '',
+  received_by uuid references auth.users,
+  by_name     text not null default '',
+  created_at  timestamptz not null default now()
+);
+create index on wedding_payments (wedding_id);
+
+create table wedding_tasks (                                      -- planning checklist
+  id         bigint generated by default as identity primary key,
+  wedding_id bigint not null references weddings on delete cascade,
+  title      text not null check (length(trim(title)) > 0),
+  due        date,
+  done       boolean not null default false,
+  done_at    timestamptz
+);
+create index on wedding_tasks (wedding_id);
+
+-- ---------- permissions ----------
+-- Every action in the app is one permission. Roles (owner / staff / stock) are just named bundles of permissions that the OWNER can change in Settings.
+-- The owner always has every permission (it cannot be edited or locked out).
+create table permissions (
+  key         text primary key,
+  grp         text not null,
+  label       text not null,
+  description text not null default '',
+  sort        int not null
+);
+create table role_permissions (
+  role    user_role not null,
+  perm    text not null references permissions on delete cascade,
+  allowed boolean not null default false,
+  primary key (role, perm)
+);
+
+insert into permissions (key, grp, label, description, sort) values
+  ('view_dashboard',   'Overview',   'See the dashboard',                'Today''s pickups, returns, overdue list and pending money.', 10),
+  ('view_calendar',    'Overview',   'See the calendar',                 'Availability of every piece day by day. Customer names only show with "See bookings".', 20),
+  ('view_bookings',    'Bookings',   'See bookings',                     'Open the bookings list and booking details (includes rent, deposit and customer names).', 30),
+  ('create_booking',   'Bookings',   'Create a booking',                 'Book a piece for a customer and take the advance. Can also add a new customer while booking.', 40),
+  ('handover',         'Bookings',   'Hand over an outfit',              'Collect the balance and give the outfit to the customer.', 50),
+  ('receive_return',   'Bookings',   'Receive a return',                 'Check condition, add damage charges, settle the deposit and refund.', 60),
+  ('cancel_booking',   'Bookings',   'Cancel a booking',                 'Cancel a booking that has not been picked up.', 70),
+  ('view_payments',    'Money',      'See payments',                     'Open the Payments page: receipts, pending balances, deposits held.', 80),
+  ('take_payment',     'Money',      'Take a payment',                   'Record advance, balance, late fee, damage charge or refund.', 90),
+  ('override_late_fee','Money',      'Charge more late fee than the daily rate', 'Without this, the late fee can be lowered or waived but never raised above days x daily rate.', 100),
+  ('view_customers',   'Customers',  'See customers',                    'Customer list, profiles, phone numbers and history.', 110),
+  ('edit_customers',   'Customers',  'Add and edit customers',           'Add a customer, change name, city, ID proof and notes.', 120),
+  ('view_weddings',    'Weddings',   'See weddings',                     'Open bridal bookings: functions, services, outfits, payments, checklist and the salon schedule.', 122),
+  ('edit_weddings',    'Weddings',   'Create and edit weddings',         'Add a bride, functions, services and checklist items, assign artists, link rented outfits.', 124),
+  ('wedding_payments', 'Weddings',   'Take wedding payments',            'Record advance and instalments for a wedding.', 126),
+  ('manage_salon',     'Weddings',   'Manage artists and service prices', 'Add artists and edit the salon price list.', 128),
+  ('view_inventory',   'Inventory',  'See inventory',                    'Outfits, photos, status and booking dates (without customer details).', 130),
+  ('manage_outfits',   'Inventory',  'Add and edit outfits',             'Add a piece, change its rent, deposit, details and photo.', 140),
+  ('set_outfit_status','Inventory',  'Mark cleaning, repair or ready',   'Move a piece between available, cleaning and repair.', 150),
+  ('print_tags',       'Inventory',  'Print piece tags',                 'QR and barcode tags for pieces.', 160),
+  ('view_reports',     'Admin',      'See reports',                      'Revenue, utilisation, late returns and CSV export.', 170),
+  ('manage_settings',  'Admin',      'Change shop settings',             'Shop details, rental rules, late fee, slip terms and WhatsApp messages.', 180),
+  ('manage_users',     'Admin',      'Manage users and permissions',     'Change who can sign in, their role, and what each role may do.', 190),
+  ('view_audit',       'Admin',      'See the activity log',             'Who did what and when (bookings, payments, returns, changes).', 200);
+
+-- defaults for the two non-owner roles (the owner edits these in Settings > Roles & permissions)
+insert into role_permissions (role, perm, allowed)
+select r.role, p.key, (r.role = 'staff' and p.key in ('view_dashboard', 'view_calendar', 'view_bookings', 'create_booking', 'handover', 'receive_return', 'cancel_booking',
+                                                      'view_payments', 'take_payment', 'view_customers', 'edit_customers', 'view_weddings', 'edit_weddings', 'wedding_payments', 'view_inventory', 'set_outfit_status', 'print_tags'))
+                    or (r.role = 'stock' and p.key in ('view_calendar', 'view_inventory', 'manage_outfits', 'set_outfit_status', 'print_tags'))
+from (values ('staff'::user_role), ('stock'::user_role)) r(role) cross join permissions p;
+
+-- ---------- helpers ----------
+create or replace function shop_today() returns date language sql stable as
+$$ select (now() at time zone 'Asia/Kolkata')::date $$;
+
+create or replace function app_role() returns user_role language sql stable security definer set search_path = public as
+$$ select role from public.profiles where id = auth.uid() and active $$;
+
+-- does the signed-in, active user hold this permission? (the owner holds all of them)
+create or replace function has_perm(p text) returns boolean language sql stable security definer set search_path = public as $$
+  select coalesce((select pr.role = 'owner' or coalesce((select rp.allowed from public.role_permissions rp where rp.role = pr.role and rp.perm = p), false)
+                   from public.profiles pr where pr.id = auth.uid() and pr.active), false)
+$$;
+create or replace function has_any_perm(variadic ps text[]) returns boolean language sql stable security definer set search_path = public as
+$$ select exists (select 1 from unnest(ps) p where public.has_perm(p)) $$;
+create or replace function require_perm(variadic ps text[]) returns void language plpgsql stable security definer set search_path = public as $$
+begin
+  if not has_any_perm(variadic ps) then raise exception 'forbidden' using errcode = '42501'; end if;
+end $$;
+
+create or replace function log_audit(p_action text, p_details jsonb default '{}') returns void language sql security definer set search_path = public as
+$$ insert into audit_log (user_id, action, details) values (auth.uid(), p_action, p_details) $$;
+
+create or replace function norm_phone(p text) returns text language plpgsql immutable as $$
+declare d text := right(regexp_replace(coalesce(p, ''), '\D', '', 'g'), 10);
+begin
+  if length(d) <> 10 then raise exception 'bad_phone'; end if;
+  return substr(d, 1, 5) || ' ' || substr(d, 6);
+end $$;
+
+-- first user to sign up becomes the owner; everyone after is staff until the owner changes it.
+-- IMPORTANT: switch OFF public sign-ups in Supabase (Auth > Providers > Email > "Allow new users to sign up") and add staff yourself.
+create or replace function handle_new_user() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  insert into profiles (id, full_name, email, role)
+  values (new.id, coalesce(new.raw_user_meta_data ->> 'full_name', split_part(new.email, '@', 1)), coalesce(new.email, ''),
+          case when exists (select 1 from profiles) then 'staff'::user_role else 'owner'::user_role end);
+  return new;
+end $$;
+create trigger on_auth_user_created after insert on auth.users for each row execute function handle_new_user();
+
+-- stamp the name of whoever wrote a timeline event / audit entry
+create or replace function stamp_name() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if new.by_name = '' then new.by_name := coalesce((select full_name from profiles where id = auth.uid()), ''); end if;
+  return new;
+end $$;
+create trigger stamp_event before insert on booking_events for each row execute function stamp_name();
+create trigger stamp_audit before insert on audit_log for each row execute function stamp_name();
+create trigger stamp_wpay before insert on wedding_payments for each row execute function stamp_name();
+
+-- ---------- read model ----------
+create or replace view bookings_v with (security_invoker = true) as
+select b.id, b.piece_no, b.customer_id, c.name as customer_name, c.phone as customer_phone,
+       b.from_date, b.to_date, b.rent, b.deposit, b.notes, b.created_at,
+       b.status::text as raw_status,
+       case when b.status = 'out' and b.to_date < shop_today() then 'overdue' else b.status::text end as status,
+       case when b.status = 'out' then greatest(0, shop_today() - b.to_date) else 0 end as late_days,
+       coalesce((select sum(p.amount) from payments p where p.booking_id = b.id and p.type in ('advance', 'deposit', 'balance')), 0) as paid_in
+from bookings b left join customers c on c.id = b.customer_id;
+
+-- Dates + status only (no money, no customers): what people without "See bookings" use for the calendar and availability.
+-- A plain view runs with its owner's rights, so it can read bookings even though those people cannot read the table itself.
+create or replace view booking_slots as
+select id, piece_no, from_date, to_date, status from bookings
+where has_any_perm('view_calendar', 'view_inventory', 'view_dashboard', 'view_bookings');
+
+-- How much each booking has paid so far (totals only, no receipts). Anyone who can see bookings needs this to show the right balance,
+-- even if they may not open the Payments page. Same trick as above: the view runs with its owner's rights and checks the permission itself.
+create or replace view booking_money as
+select booking_id,
+       coalesce(sum(amount) filter (where type in ('advance', 'deposit', 'balance')), 0) as paid,
+       coalesce(sum(amount) filter (where type = 'deposit'), 0) as deposit_paid
+from payments where has_perm('view_bookings') group by booking_id;
+
+-- ---------- RPCs (all writes by staff / stock) ----------
+create or replace function create_booking(p_piece int, p_customer bigint, p_from date, p_to date,
+                                          p_advance numeric default 0, p_mode pay_mode default 'cash', p_notes text default '', p_wedding bigint default null)
+returns bigint language plpgsql security definer set search_path = public as $$
+declare o outfits; v_days int; v_rent numeric; v_id bigint; v_dep numeric; v_clash record; s shop_settings;
+begin
+  perform require_perm('create_booking');
+  select * into s from shop_settings where id = 1;
+  select * into o from outfits where piece_no = p_piece and active for update;   -- row lock: two counters booking the same piece queue up here
+  if not found then raise exception 'piece_not_found'; end if;
+  if o.status = 'repair' then raise exception 'piece_in_repair'; end if;
+  if p_to < p_from then raise exception 'bad_dates'; end if;
+  if p_from < shop_today() then raise exception 'past_date'; end if;
+  if not exists (select 1 from customers where id = p_customer) then raise exception 'customer_not_found'; end if;
+  if p_wedding is not null and not exists (select 1 from weddings where id = p_wedding) then raise exception 'wedding_not_found'; end if;
+  v_days := p_to - p_from + 1;
+  if v_days < s.min_days then raise exception 'below_min_days' using detail = s.min_days::text; end if;
+  v_rent := v_days * o.rent_per_day;
+  if coalesce(p_advance, 0) < 0 or coalesce(p_advance, 0) > v_rent + o.deposit then raise exception 'bad_advance'; end if;
+
+  begin
+    insert into bookings (piece_no, customer_id, from_date, to_date, rent, deposit, notes, created_by, wedding_id)
+    values (p_piece, p_customer, p_from, p_to, v_rent, o.deposit, coalesce(p_notes, ''), auth.uid(), p_wedding) returning id into v_id;
+  exception when exclusion_violation then
+    select id, from_date, to_date into v_clash from bookings
+      where piece_no = p_piece and status in ('upcoming', 'out') and block_range && daterange(p_from, p_to + 1, '[]') limit 1;
+    raise exception 'piece_already_booked' using detail = format('BK-%s %s to %s', v_clash.id, v_clash.from_date, v_clash.to_date);
+  end;
+
+  if coalesce(p_advance, 0) > 0 then                      -- advance covers the deposit first, then rent
+    v_dep := least(p_advance, o.deposit);
+    if v_dep > 0 then insert into payments (booking_id, type, mode, amount, received_by) values (v_id, 'deposit', p_mode, v_dep, auth.uid()); end if;
+    if p_advance - v_dep > 0 then insert into payments (booking_id, type, mode, amount, received_by) values (v_id, 'advance', p_mode, p_advance - v_dep, auth.uid()); end if;
+  end if;
+  insert into booking_events (booking_id, kind, message, created_by)
+    values (v_id, 'created', format('Booking created for piece %s, %s to %s', p_piece, p_from, p_to), auth.uid());
+  perform log_audit('create_booking', jsonb_build_object('booking', v_id, 'piece', p_piece, 'advance', coalesce(p_advance, 0)));
+  return v_id;
+end $$;
+
+create or replace function hand_over(p_booking bigint, p_amount numeric default 0, p_mode pay_mode default 'cash')
+returns void language plpgsql security definer set search_path = public as $$
+declare b bookings; o outfits; v_paid numeric; v_due numeric; v_dep_part numeric;
+begin
+  perform require_perm('handover');
+  select * into b from bookings where id = p_booking for update;
+  if not found then raise exception 'booking_not_found'; end if;
+  if b.status <> 'upcoming' then raise exception 'not_upcoming'; end if;
+  select * into o from outfits where piece_no = b.piece_no for update;
+  if o.status <> 'available' then raise exception 'piece_not_ready' using detail = o.status::text; end if;
+  select coalesce(sum(amount), 0) into v_paid from payments where booking_id = b.id and type in ('advance', 'deposit', 'balance');
+  v_due := greatest(0, b.rent + b.deposit - v_paid);
+  if coalesce(p_amount, 0) < v_due then raise exception 'balance_due' using detail = v_due::text; end if;
+  if v_due > 0 then                                        -- balance also covers the deposit first, so "deposit held" is always correct
+    v_dep_part := least(v_due, greatest(0, b.deposit - (select coalesce(sum(amount), 0) from payments where booking_id = b.id and type = 'deposit')));
+    if v_dep_part > 0 then insert into payments (booking_id, type, mode, amount, received_by) values (b.id, 'deposit', p_mode, v_dep_part, auth.uid()); end if;
+    if v_due - v_dep_part > 0 then insert into payments (booking_id, type, mode, amount, received_by) values (b.id, 'balance', p_mode, v_due - v_dep_part, auth.uid()); end if;
+  end if;
+  update bookings set status = 'out' where id = b.id;
+  update outfits set status = 'rented', note = '' where piece_no = b.piece_no;
+  insert into booking_events (booking_id, kind, message, created_by) values (b.id, 'handover', 'Outfit handed over to customer', auth.uid());
+  perform log_audit('hand_over', jsonb_build_object('booking', b.id, 'collected', v_due));
+end $$;
+
+create or replace function complete_return(p_booking bigint, p_items jsonb, p_late_fee numeric, p_other numeric,
+                                           p_mode pay_mode, p_next outfit_status, p_notes text default '')
+returns returns language plpgsql security definer set search_path = public as $$
+declare b bookings; s shop_settings; r returns; v_dep numeric; v_damage numeric; v_net numeric; v_late numeric := greatest(coalesce(p_late_fee, 0), 0);
+        v_other numeric := greatest(coalesce(p_other, 0), 0); v_max_late numeric; v_collect numeric; v_late_part numeric;
+begin
+  perform require_perm('receive_return');
+  select * into s from shop_settings where id = 1;
+  select * into b from bookings where id = p_booking for update;
+  if not found then raise exception 'booking_not_found'; end if;
+  if b.status <> 'out' then raise exception 'not_out'; end if;
+  if p_next = 'rented' then raise exception 'bad_next_status'; end if;
+  v_max_late := greatest(0, shop_today() - b.to_date) * s.late_fee_per_day;
+  if not has_perm('override_late_fee') and v_late > v_max_late then raise exception 'late_fee_too_high' using detail = v_max_late::text; end if;
+
+  select coalesce(sum(amount), 0) into v_dep from payments where booking_id = b.id and type = 'deposit';
+  select coalesce(sum((i ->> 'charge')::numeric), 0) into v_damage from jsonb_array_elements(coalesce(p_items, '[]'::jsonb)) i where (i ->> 'state') <> 'ok';
+  v_net := v_dep - v_late - v_damage - v_other;
+
+  insert into returns (booking_id, returned_on, deposit_held, late_fee, damage_total, other_deduction, net_refund, mode, next_status, notes, handled_by)
+  values (b.id, shop_today(), v_dep, v_late, v_damage, v_other, v_net, p_mode, p_next, coalesce(p_notes, ''), auth.uid()) returning * into r;
+  insert into return_items (return_id, item, state, charge)
+    select r.id, i ->> 'name', (i ->> 'state')::item_state, case when (i ->> 'state') = 'ok' then 0 else coalesce((i ->> 'charge')::numeric, 0) end
+    from jsonb_array_elements(coalesce(p_items, '[]'::jsonb)) i;
+
+  if v_net > 0 then
+    insert into payments (booking_id, type, mode, amount, received_by) values (b.id, 'refund', p_mode, v_net, auth.uid());
+  elsif v_net < 0 then                                     -- deductions bigger than the deposit: customer pays the difference
+    v_collect := -v_net; v_late_part := least(v_collect, v_late);
+    if v_late_part > 0 then insert into payments (booking_id, type, mode, amount, received_by) values (b.id, 'late_fee', p_mode, v_late_part, auth.uid()); end if;
+    if v_collect - v_late_part > 0 then insert into payments (booking_id, type, mode, amount, received_by) values (b.id, 'damage', p_mode, v_collect - v_late_part, auth.uid()); end if;
+  end if;
+
+  update bookings set status = 'returned' where id = b.id;
+  update outfits set status = p_next, note = case p_next when 'repair' then 'In repair' when 'cleaning' then 'In cleaning' else '' end where piece_no = b.piece_no;
+  insert into booking_events (booking_id, kind, message, created_by)
+    values (b.id, 'return', format('Returned. Deposit settled: %s', case when v_net >= 0 then 'refund ' || v_net else 'customer paid ' || (-v_net) end), auth.uid());
+  perform log_audit('complete_return', jsonb_build_object('booking', b.id, 'net', v_net, 'late', v_late, 'damage', v_damage));
+  return r;
+end $$;
+
+create or replace function record_payment(p_booking bigint, p_type payment_type, p_mode pay_mode, p_amount numeric, p_reference text default '')
+returns bigint language plpgsql security definer set search_path = public as $$
+declare v_id bigint;
+begin
+  perform require_perm('take_payment');
+  if coalesce(p_amount, 0) <= 0 then raise exception 'bad_amount'; end if;
+  if not exists (select 1 from bookings where id = p_booking and status <> 'cancelled') then raise exception 'booking_not_found'; end if;
+  insert into payments (booking_id, type, mode, amount, reference, received_by)
+    values (p_booking, p_type, p_mode, p_amount, coalesce(p_reference, ''), auth.uid()) returning id into v_id;
+  insert into booking_events (booking_id, kind, message, created_by) values (p_booking, 'payment', format('%s %s received (%s)', initcap(p_type::text), p_amount, p_mode), auth.uid());
+  perform log_audit('record_payment', jsonb_build_object('booking', p_booking, 'type', p_type, 'amount', p_amount));
+  return v_id;
+end $$;
+
+create or replace function cancel_booking(p_booking bigint, p_reason text default '')
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  perform require_perm('cancel_booking');
+  update bookings set status = 'cancelled' where id = p_booking and status = 'upcoming';
+  if not found then raise exception 'not_upcoming'; end if;
+  insert into booking_events (booking_id, kind, message, created_by) values (p_booking, 'cancel', 'Booking cancelled. ' || coalesce(p_reason, ''), auth.uid());
+  perform log_audit('cancel_booking', jsonb_build_object('booking', p_booking));
+end $$;
+
+create or replace function add_return_photo(p_return bigint, p_path text)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  perform require_perm('receive_return');
+  if not exists (select 1 from returns where id = p_return) then raise exception 'booking_not_found'; end if;
+  insert into return_photos (return_id, path) values (p_return, p_path);
+end $$;
+
+create or replace function add_comment(p_booking bigint, p_message text)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  perform require_perm('view_bookings');
+  if length(trim(coalesce(p_message, ''))) = 0 then raise exception 'empty_comment'; end if;
+  insert into booking_events (booking_id, kind, message, created_by) values (p_booking, 'comment', trim(p_message), auth.uid());
+end $$;
+
+create or replace function add_customer(p_name text, p_phone text, p_city text default '', p_id_proof text default 'Aadhaar', p_notes text default '')
+returns bigint language plpgsql security definer set search_path = public as $$
+declare v_phone text := norm_phone(p_phone); v_id bigint;
+begin
+  perform require_perm('edit_customers', 'create_booking', 'edit_weddings');
+  select id into v_id from customers where phone = v_phone;
+  if found then raise exception 'customer_exists' using detail = v_id::text; end if;
+  insert into customers (name, phone, city, id_proof, notes) values (trim(p_name), v_phone, coalesce(p_city, ''), coalesce(p_id_proof, 'Aadhaar'), coalesce(p_notes, '')) returning id into v_id;
+  perform log_audit('add_customer', jsonb_build_object('customer', v_id));
+  return v_id;
+end $$;
+
+create or replace function update_customer(p_id bigint, p_name text, p_city text, p_id_proof text, p_notes text)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  perform require_perm('edit_customers');
+  if length(trim(coalesce(p_name, ''))) = 0 then raise exception 'empty_name'; end if;
+  update customers set name = trim(p_name), city = coalesce(p_city, ''), id_proof = coalesce(p_id_proof, 'Aadhaar'), notes = coalesce(p_notes, '') where id = p_id;
+  if not found then raise exception 'customer_not_found'; end if;
+  perform log_audit('update_customer', jsonb_build_object('customer', p_id));
+end $$;
+
+create or replace function upsert_outfit(p_piece int, p_name text, p_category text, p_size text, p_rent numeric, p_deposit numeric,
+                                         p_color1 text default '#c62828', p_color2 text default '#ef6c00', p_note text default '', p_photo_path text default null)
+returns int language plpgsql security definer set search_path = public as $$
+begin
+  perform require_perm('manage_outfits');
+  insert into outfits (piece_no, name, category, size, rent_per_day, deposit, color1, color2, note, photo_path)
+  values (p_piece, trim(p_name), p_category, p_size, p_rent, p_deposit, p_color1, p_color2, coalesce(p_note, ''), p_photo_path)
+  on conflict (piece_no) do update set name = excluded.name, category = excluded.category, size = excluded.size, rent_per_day = excluded.rent_per_day,
+    deposit = excluded.deposit, color1 = excluded.color1, color2 = excluded.color2, note = excluded.note,
+    photo_path = coalesce(excluded.photo_path, outfits.photo_path);
+  perform log_audit('upsert_outfit', jsonb_build_object('piece', p_piece));
+  return p_piece;
+end $$;
+
+create or replace function set_outfit_status(p_piece int, p_status outfit_status, p_note text default '')
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  perform require_perm('set_outfit_status');
+  if p_status = 'rented' then raise exception 'use_hand_over'; end if;
+  if p_status = 'available' and exists (select 1 from bookings where piece_no = p_piece and status = 'out') then raise exception 'piece_is_out'; end if;
+  update outfits set status = p_status, note = coalesce(p_note, '') where piece_no = p_piece and active;
+  if not found then raise exception 'piece_not_found'; end if;
+  perform log_audit('set_outfit_status', jsonb_build_object('piece', p_piece, 'status', p_status));
+end $$;
+
+-- change a person's role / switch them on or off. Safety rules: only an owner can make or change an owner, the last owner can never be
+-- removed, and nobody can change their own role (so nobody locks themselves out by accident).
+create or replace function set_user_role(p_user uuid, p_role user_role, p_active boolean)
+returns void language plpgsql security definer set search_path = public as $$
+declare t profiles;
+begin
+  perform require_perm('manage_users');
+  select * into t from profiles where id = p_user for update;
+  if not found then raise exception 'user_not_found'; end if;
+  if (p_role = 'owner' or t.role = 'owner') and app_role() <> 'owner' then raise exception 'forbidden' using errcode = '42501'; end if;
+  if p_user = auth.uid() and (p_role <> t.role or not p_active) then raise exception 'cannot_change_self'; end if;
+  if t.role = 'owner' and t.active and (p_role <> 'owner' or not p_active)
+     and not exists (select 1 from profiles where role = 'owner' and active and id <> p_user) then raise exception 'last_owner'; end if;
+  update profiles set role = p_role, active = p_active where id = p_user;
+  perform log_audit('set_user_role', jsonb_build_object('user', p_user, 'role', p_role, 'active', p_active));
+end $$;
+
+-- replace the full permission list of one role. The owner role is fixed. Anyone other than an owner can only hand out permissions they hold themselves,
+-- and cannot give "manage_users" (so a manager cannot make themselves all-powerful).
+create or replace function set_role_permissions(p_role user_role, p_perms text[])
+returns void language plpgsql security definer set search_path = public as $$
+declare k text;
+begin
+  perform require_perm('manage_users');
+  if p_role = 'owner' then raise exception 'owner_is_fixed'; end if;
+  foreach k in array coalesce(p_perms, '{}') loop
+    if not exists (select 1 from permissions where key = k) then raise exception 'unknown_permission' using detail = k; end if;
+  end loop;
+  if app_role() <> 'owner' then
+    foreach k in array coalesce(p_perms, '{}') loop
+      if not has_perm(k) or (k = 'manage_users' and not coalesce((select allowed from role_permissions where role = p_role and perm = 'manage_users'), false)) then
+        raise exception 'forbidden' using errcode = '42501';
+      end if;
+    end loop;
+  end if;
+  insert into role_permissions (role, perm, allowed)
+    select p_role, key, key = any (coalesce(p_perms, '{}')) from permissions
+  on conflict (role, perm) do update set allowed = excluded.allowed;
+  perform log_audit('set_role_permissions', jsonb_build_object('role', p_role, 'permissions', coalesce(p_perms, '{}')));
+end $$;
+
+-- ---------- wedding functions ----------
+-- Create a wedding and give it the standard planning checklist.
+create or replace function create_wedding(p_customer bigint, p_groom text, p_date date, p_venue text default '', p_city text default '',
+                                          p_status wedding_status default 'enquiry', p_notes text default '')
+returns bigint language plpgsql security definer set search_path = public as $$
+declare v_id bigint;
+begin
+  perform require_perm('edit_weddings');
+  if not exists (select 1 from customers where id = p_customer) then raise exception 'customer_not_found'; end if;
+  if p_date is null then raise exception 'bad_dates'; end if;
+  insert into weddings (customer_id, groom_name, wedding_date, venue, city, status, notes, created_by)
+  values (p_customer, coalesce(trim(p_groom), ''), p_date, coalesce(p_venue, ''), coalesce(p_city, ''), p_status, coalesce(p_notes, ''), auth.uid()) returning id into v_id;
+  insert into wedding_tasks (wedding_id, title, due) values
+    (v_id, 'Trial booked and done', p_date - 21), (v_id, 'Bridal outfit finalised', p_date - 14), (v_id, 'Jewellery and accessories decided', p_date - 10),
+    (v_id, 'Advance received', p_date - 30), (v_id, 'Artists assigned to every function', p_date - 7), (v_id, 'Final confirmation call to the family', p_date - 3);
+  perform log_audit('create_wedding', jsonb_build_object('wedding', v_id, 'customer', p_customer));
+  return v_id;
+end $$;
+
+create or replace function add_wedding_payment(p_wedding bigint, p_amount numeric, p_mode pay_mode default 'cash', p_note text default '')
+returns bigint language plpgsql security definer set search_path = public as $$
+declare v_id bigint; w weddings;
+begin
+  perform require_perm('wedding_payments');
+  if coalesce(p_amount, 0) <= 0 then raise exception 'bad_amount'; end if;
+  select * into w from weddings where id = p_wedding;
+  if not found or w.status = 'cancelled' then raise exception 'wedding_not_found'; end if;
+  insert into wedding_payments (wedding_id, amount, mode, note, received_by) values (p_wedding, p_amount, p_mode, coalesce(p_note, ''), auth.uid()) returning id into v_id;
+  perform log_audit('add_wedding_payment', jsonb_build_object('wedding', p_wedding, 'amount', p_amount));
+  return v_id;
+end $$;
+
+create or replace function set_wedding_status(p_wedding bigint, p_status wedding_status)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  perform require_perm('edit_weddings');
+  update weddings set status = p_status where id = p_wedding;
+  if not found then raise exception 'wedding_not_found'; end if;
+  perform log_audit('set_wedding_status', jsonb_build_object('wedding', p_wedding, 'status', p_status));
+end $$;
+
+-- lock the RPCs to signed-in users only
+do $$ declare f record; begin
+  for f in select p.oid::regprocedure as sig from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+           where n.nspname = 'public' and p.proname in ('create_booking', 'hand_over', 'complete_return', 'record_payment', 'cancel_booking', 'add_comment',
+                                                      'add_customer', 'update_customer', 'create_wedding', 'add_wedding_payment', 'set_wedding_status', 'upsert_outfit', 'set_outfit_status', 'add_return_photo', 'log_audit', 'app_role', 'has_perm', 'has_any_perm', 'require_perm', 'set_user_role', 'set_role_permissions')
+  loop
+    execute format('revoke all on function %s from public, anon', f.sig);
+    execute format('grant execute on function %s to authenticated', f.sig);
+  end loop;
+end $$;
+
+-- ---------- row level security ----------
+alter table profiles        enable row level security;
+alter table shop_settings   enable row level security;
+alter table outfits         enable row level security;
+alter table outfit_photos   enable row level security;
+alter table customers       enable row level security;
+alter table bookings        enable row level security;
+alter table payments        enable row level security;
+alter table returns         enable row level security;
+alter table return_items    enable row level security;
+alter table return_photos   enable row level security;
+alter table booking_events  enable row level security;
+alter table audit_log       enable row level security;
+
+
+alter table artists           enable row level security;
+alter table salon_services    enable row level security;
+alter table weddings          enable row level security;
+alter table wedding_events    enable row level security;
+alter table wedding_items     enable row level security;
+alter table wedding_payments  enable row level security;
+alter table wedding_tasks     enable row level security;
+alter table permissions       enable row level security;
+alter table role_permissions  enable row level security;
+
+-- READING is decided by permissions (the owner has all of them)
+create policy read_perm on outfits        for select to authenticated using (has_any_perm('view_inventory', 'view_calendar', 'view_bookings', 'view_dashboard', 'create_booking', 'manage_outfits'));
+create policy read_perm on outfit_photos  for select to authenticated using (has_any_perm('view_inventory', 'view_calendar', 'view_bookings', 'view_dashboard'));
+create policy read_perm on bookings       for select to authenticated using (has_perm('view_bookings'));
+create policy read_perm on returns        for select to authenticated using (has_perm('view_bookings'));
+create policy read_perm on return_items   for select to authenticated using (has_perm('view_bookings'));
+create policy read_perm on return_photos  for select to authenticated using (has_perm('view_bookings'));
+create policy read_perm on booking_events for select to authenticated using (has_perm('view_bookings'));
+create policy read_perm on customers      for select to authenticated using (has_any_perm('view_customers', 'create_booking', 'view_weddings'));
+create policy read_perm on payments       for select to authenticated using (has_perm('view_payments'));
+-- weddings: everything about a wedding needs "See weddings"
+do $$ declare t text; begin
+  foreach t in array array['artists', 'salon_services', 'weddings', 'wedding_events', 'wedding_items', 'wedding_payments', 'wedding_tasks'] loop
+    execute format('create policy read_perm on %I for select to authenticated using (has_perm(''view_weddings''))', t);
+  end loop;
+  -- planning data (not money) can be edited directly by anyone with "Create and edit weddings"
+  foreach t in array array['weddings', 'wedding_events', 'wedding_items', 'wedding_tasks'] loop
+    execute format('create policy edit_perm_ins on %I for insert to authenticated with check (has_perm(''edit_weddings''))', t);
+    execute format('create policy edit_perm_upd on %I for update to authenticated using (has_perm(''edit_weddings'')) with check (has_perm(''edit_weddings''))', t);
+    execute format('create policy edit_perm_del on %I for delete to authenticated using (has_perm(''edit_weddings''))', t);
+  end loop;
+  -- the price list and the artists: "Manage artists and service prices"
+  foreach t in array array['artists', 'salon_services'] loop
+    execute format('create policy salon_ins on %I for insert to authenticated with check (has_perm(''manage_salon''))', t);
+    execute format('create policy salon_upd on %I for update to authenticated using (has_perm(''manage_salon'')) with check (has_perm(''manage_salon''))', t);
+  end loop;
+end $$;
+create policy read_perm on audit_log      for select to authenticated using (has_perm('view_audit'));
+create policy read_perm on shop_settings  for select to authenticated using (app_role() is not null);       -- shop name, late fee, slip terms: every signed-in person needs them
+create policy read_perm on permissions    for select to authenticated using (app_role() is not null);
+create policy read_perm on role_permissions for select to authenticated using (app_role() is not null);      -- so the app knows what the signed-in role may do
+create policy read_perm on profiles       for select to authenticated using (id = auth.uid() or has_perm('manage_users'));
+
+-- WRITING
+-- shop settings: anyone with "Change shop settings"
+create policy write_settings on shop_settings for update to authenticated using (has_perm('manage_settings')) with check (has_perm('manage_settings'));
+-- everything else: direct writes are for the OWNER only. Everyone else changes data through the functions above, which check the permission
+-- and keep the numbers consistent. (Users and role permissions are changed with set_user_role / set_role_permissions.)
+do $$ declare t text; begin
+  foreach t in array array['profiles', 'role_permissions', 'permissions', 'shop_settings', 'outfits', 'outfit_photos', 'customers', 'bookings', 'payments', 'returns', 'return_items', 'return_photos', 'booking_events', 'artists', 'salon_services', 'weddings', 'wedding_events', 'wedding_items', 'wedding_payments', 'wedding_tasks'] loop
+    execute format('create policy owner_write on %I for all to authenticated using (app_role() = ''owner'') with check (app_role() = ''owner'')', t);
+  end loop;
+end $$;
+
+-- the dates-only view is available to signed-in users (it filters by permission itself)
+revoke all on booking_slots from public, anon;
+grant select on booking_slots to authenticated;
+revoke all on booking_money from public, anon;
+grant select on booking_money to authenticated;

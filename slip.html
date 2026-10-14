@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en" data-theme="light" data-density="comfortable">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27%3E%3Cpath d=%27M6 3h12l4 6-10 12L2 9Z%27 fill=%27%23ec7211%27/%3E%3C/svg%3E">
+  <title>Slip · Pratishtha Bridal</title>
+  <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/tokens.css">
+  <link rel="stylesheet" href="css/layout.css">
+  <link rel="stylesheet" href="css/components.css">
+  <link rel="stylesheet" href="css/rental.css">
+</head>
+<body data-active="bookings" data-perm="view_bookings">
+<div id="page">
+  <div class="page-header no-print">
+    <div><h1 id="h">Slip</h1><p id="p"></p></div>
+    <div class="actions"><button class="btn" id="back">Back</button><button class="btn btn-primary" id="print"><i data-icon="printer"></i> Print</button></div>
+  </div>
+  <article class="sheet" id="sheet"></article>
+</div>
+
+<script src="js/config.js"></script>
+<script src="js/data.js"></script>
+<script src="js/api.js"></script>
+<script src="js/codes.js"></script>
+<script src="js/shell.js"></script>
+<script>
+  /* slip.html?type=booking&id=1042   -> booking slip (give to the customer at pickup)
+     slip.html?type=return&id=1029    -> return & deposit receipt (read from the saved return record) */
+  RR.ready.then(() => {
+    const { inr, fmt, range, esc } = RR, $ = (id) => document.getElementById(id), S = RR.SETTINGS;
+    const qs = new URLSearchParams(location.search), type = qs.get('type') === 'return' ? 'return' : 'booking';
+    if (qs.get('type') === 'wedding') { weddingDoc(); return; }
+    const b = RR.bookingByNo(qs.get('id')) || RR.BOOKINGS[0];
+    if (!b) { document.querySelector('.content-inner').innerHTML = '<div class="alert warning"><div><strong>Booking not found</strong></div></div>'; return; }
+    const o = RR.outfitById(b.outfit) || { id: b.outfit, name: '', cat: '', size: '', rent: 0 }, c = RR.customerOf(b);
+    const days = RR.daysBetween(b.from, b.to) + 1, year = (d) => d.slice(0, 4);
+    const row = (a, v, cls = '') => `<tr class="${cls}"><td>${a}</td><td class="r">${v}</td></tr>`;
+    const head = (title, sub) => `<div class="shop"><b>${esc(S.shopName)}</b>${esc(S.address)}${S.phone ? ' · ' + esc(S.phone) : ''}${S.gstin ? '<br>GSTIN ' + esc(S.gstin) : ''}</div><h1>${title}</h1><p style="text-align:center;margin:0 0 6px;color:#555">${sub}</p>`;
+    const bc = (v) => `<div class="bcrow">${Codes.barcodeSvg(String(v), { height: 30, module: 2 })}<small>${v}</small></div>`;
+    const piece = `<div class="piece"><div class="art-wrap" style="width:56px;height:70px;flex:none;border-radius:4px;overflow:hidden">${RR.outfitPhoto(o)}</div>
+      <div><strong style="font-size:15px">${o.id} · ${esc(o.name)}</strong><br>${esc(o.cat)} · Size ${esc(o.size)}<br>Rent ${inr(o.rent)} / day · Deposit ${inr(b.deposit)}</div></div>`;
+    const who = `<dl class="two"><div><dt>Customer</dt><dd>${esc(b.customer)}</dd></div><div><dt>Mobile</dt><dd>${esc(b.phone)}</dd></div>
+      <div><dt>Pickup</dt><dd>${fmt(b.from)} ${year(b.from)}</dd></div><div><dt>Return by</dt><dd>${fmt(b.to)} ${year(b.to)} (${days} day${days > 1 ? 's' : ''})</dd></div></dl>`;
+    const sign = '<div class="sign"><span>Customer signature</span><span>Staff signature</span></div>';
+    let html = '';
+
+    if (type === 'booking') {
+      const total = b.rent + b.deposit, paid = Math.min(b.paid, total), bal = Math.max(0, total - paid);
+      const terms = (S.terms && S.terms.length ? S.terms : []).map((t) => `<li>${esc(t)}</li>`).join('');
+      html = head('BOOKING SLIP', `${b.id} · printed ${fmt(RR.TODAY)} ${year(RR.TODAY)}`) + who + piece +
+        `<table>${row(`Rent (${days} day${days > 1 ? 's' : ''} × ${inr(o.rent)})`, inr(b.rent))}${row('Security deposit (refundable)', inr(b.deposit))}${row('Total', inr(total), 'tot')}
+        ${row(bal === 0 ? 'Paid in full' : 'Paid so far', inr(paid))}${row(bal === 0 ? 'Balance' : 'Balance to pay', inr(bal), 'tot')}</table>` + bc(b.no) +
+        `<strong>Terms</strong><ol><li>Late return is charged ${inr(S.lateFeePerDay)} per day after a ${S.graceHours}-hour grace period.</li>${terms}${c ? `<li>ID proof (${esc(c.idProof)}) is verified at pickup.</li>` : ''}</ol>` + sign;
+      $('h').textContent = 'Booking slip';
+    } else {
+      const r = RR.RETURNS.find((x) => x.booking === b.no);
+      if (!r) { document.querySelector('.content-inner').innerHTML = `<div class="alert warning"><div><strong>No return recorded yet</strong>${b.id} has not been returned. <a href="return.html?id=${b.no}">Receive the return</a></div></div>`; return; }
+      const owes = r.net < 0, issues = (r.items || []).filter((i) => i.state !== 'ok'), mode = { cash: 'Cash', upi: 'UPI', card: 'Card', bank: 'Bank' }[r.mode] || r.mode;
+      html = head('RETURN & DEPOSIT RECEIPT', `${b.id} · returned ${fmt(r.date)} ${year(r.date)}`) + who + piece +
+        `<strong>Condition on return</strong><table>${issues.length ? issues.map((i) => `<tr><td>${esc(i.name)}</td><td>${i.state[0].toUpperCase() + i.state.slice(1)}</td><td class="r">${inr(i.charge)}</td></tr>`).join('') : '<tr><td colspan="3">All items received in good condition.</td></tr>'}</table>
+        ${r.notes ? `<p><em>Note: ${esc(r.notes)}</em></p>` : ''}
+        <table>${row('Deposit held', inr(r.depositHeld))}${r.lateFee ? row('Late fee', '− ' + inr(r.lateFee)) : ''}${r.damage ? row('Damage / missing', '− ' + inr(r.damage)) : ''}${r.other ? row('Other deduction', '− ' + inr(r.other)) : ''}
+        ${row(owes ? `Collected from customer (${mode})` : `Refunded to customer (${mode})`, inr(Math.abs(r.net)), 'tot')}</table>` + bc(b.no) +
+        '<p style="font-size:10.5px;margin:6px 0 0">This receipt confirms the outfit was returned and the deposit settled as shown above.</p>' + sign;
+      $('h').textContent = 'Return receipt';
+    }
+    $('p').textContent = `${b.id} · ${b.customer} · ${o.id} ${o.name}`;
+    document.title = $('h').textContent + ' ' + b.id + ' · ' + S.shopName;
+    $('sheet').innerHTML = html;
+    $('print').onclick = () => window.print();
+
+    /* slip.html?type=wedding&id=5001 : package quotation (enquiry) or invoice (confirmed / completed) for one bride */
+    function weddingDoc() {
+      const w = RR.weddingById(qs.get('id'));
+      if (!w) { document.querySelector('.content-inner').innerHTML = '<div class="alert warning"><div><strong>Wedding not found</strong></div></div>'; return; }
+      const row = (a, v, cls = '') => `<tr class="${cls}"><td>${a}</td><td class="r">${v}</td></tr>`;
+      const bc = (v) => `<div class="bcrow">${Codes.barcodeSvg(String(v), { height: 30, module: 2 })}<small>${v}</small></div>`;
+      const sign = '<div class="sign"><span>Customer signature</span><span>Staff signature</span></div>';
+      const invoice = w.status !== 'enquiry', title = invoice ? 'WEDDING INVOICE' : 'WEDDING QUOTATION', yr = (d) => d.slice(0, 4);
+      const head = `<div class="shop"><b>${esc(S.shopName)}</b>${esc(S.address)}${S.phone ? ' · ' + esc(S.phone) : ''}${S.gstin ? '<br>GSTIN ' + esc(S.gstin) : ''}</div><h1>${title}</h1><p style="text-align:center;margin:0 0 6px;color:#555">${w.code} · ${fmt(RR.TODAY)} ${yr(RR.TODAY)}${w.status === 'cancelled' ? ' · CANCELLED' : ''}</p>`;
+      const who = `<dl class="two"><div><dt>Bride</dt><dd>${esc(w.bride)}</dd></div><div><dt>Mobile</dt><dd>${esc(w.phone)}</dd></div><div><dt>Wedding date</dt><dd>${fmt(w.date)} ${yr(w.date)}</dd></div><div><dt>Venue</dt><dd>${esc(w.venue) || '—'}${w.city ? ', ' + esc(w.city) : ''}</dd></div></dl>`;
+      const evs = w.events.length ? `<strong>Functions</strong><table><thead><tr><th>Date</th><th>Function</th><th>Time</th><th>Artist</th></tr></thead><tbody>${w.events.map((e) => `<tr><td>${fmt(e.date)}</td><td>${esc(e.title)}${e.venue ? '<br><small>' + esc(e.venue) + '</small>' : ''}</td><td>${e.start ? e.start + (e.end ? '–' + e.end : '') : '—'}</td><td>${esc(e.artistName) || 'To be assigned'}</td></tr>`).join('')}</tbody></table>` : '';
+      const items = `<strong>Services</strong><table><thead><tr><th>Service</th><th class="r">Qty</th><th class="r">Price</th><th class="r">Total</th></tr></thead><tbody>${w.items.map((i) => `<tr><td>${esc(i.desc)}</td><td class="r">${i.qty}</td><td class="r">${inr(i.price)}</td><td class="r">${inr(i.total)}</td></tr>`).join('') || '<tr><td colspan="4">No services added yet.</td></tr>'}</tbody></table>`;
+      const sums = `<table>${row('Services total', inr(w.servicesTotal))}${w.discount ? row('Discount', '− ' + inr(w.discount)) : ''}${row('Package total', inr(w.total), 'tot')}${w.paid ? row('Received so far', inr(w.paid)) : ''}${row(w.balance ? 'Balance to pay' : 'Paid in full', inr(w.balance), 'tot')}</table>`;
+      const pays = w.payments.length ? `<strong>Payments received</strong><table>${w.payments.map((p) => `<tr><td>${fmt(p.date)}</td><td>${esc({ cash: 'Cash', upi: 'UPI', card: 'Card', bank: 'Bank' }[p.mode])}${p.note ? ' · ' + esc(p.note) : ''}</td><td class="r">${inr(p.amount)}</td></tr>`).join('')}</table>` : '';
+      const rent = (RR.api.has('view_bookings') && w.rentals.length) ? `<strong>Rented outfits (billed separately on their own slips)</strong><table>${w.rentals.map((b) => `<tr><td>${b.id}</td><td>${esc((RR.outfitById(b.outfit) || {}).name || b.outfit)}</td><td>${RR.range(b)}</td><td class="r">${inr(b.rent)}</td></tr>`).join('')}</table>` : '';
+      const terms = (S.salonTerms || []).length ? `<strong>Terms</strong><ol>${S.salonTerms.map((t) => `<li>${esc(t)}</li>`).join('')}</ol>` : '';
+      $('sheet').innerHTML = head + who + evs + items + sums + pays + rent + bc(w.id) + terms + sign;
+      $('h').textContent = invoice ? 'Wedding invoice' : 'Wedding quotation'; $('p').textContent = `${w.code} · ${w.bride}`; document.title = `${title} ${w.code} · ${S.shopName}`;
+      $('print').onclick = () => window.print(); $('back').onclick = () => (history.length > 1 ? history.back() : (location.href = 'weddings.html'));
+    }
+    $('back').onclick = () => (history.length > 1 ? history.back() : (location.href = 'bookings.html'));
+  });
+</script>
+<script src="js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en" data-theme="light" data-density="comfortable">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27%3E%3Cpath d=%27M6 3h12l4 6-10 12L2 9Z%27 fill=%27%23ec7211%27/%3E%3C/svg%3E">
+  <title>Payments · Pratishtha Bridal</title>
+  <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/tokens.css">
+  <link rel="stylesheet" href="css/layout.css">
+  <link rel="stylesheet" href="css/components.css">
+  <link rel="stylesheet" href="css/rental.css">
+</head>
+<body data-active="payments" data-perm="view_payments">
+<div id="page">
+  <div class="page-header">
+    <div><h1>Payments</h1></div>
+    <div class="actions"><button class="btn btn-primary" id="take" data-perm="take_payment"><i data-icon="plus"></i> Take payment</button></div>
+  </div>
+
+  <section class="grid cols-4" id="kpis"></section>
+
+  <section class="card" data-table>
+    <div class="toolbar">
+      <input class="input" data-filter placeholder="Search receipt, customer or booking" aria-label="Search payments">
+      <div class="chips" data-chips data-for="#pay-rows" id="chips">
+        <button data-status="all" aria-pressed="true">All</button>
+        <button data-status="pending" aria-pressed="false">Pending</button>
+        <button data-status="deposit" aria-pressed="false">Deposits held</button>
+        <button data-status="refund" aria-pressed="false">Refunds</button>
+        <button data-status="paid" aria-pressed="false">Received</button>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table class="table">
+        <thead><tr><th data-sort>Receipt</th><th data-sort>Date</th><th>Booking</th><th data-sort>Customer</th><th>Type</th><th>Mode</th><th class="num" data-sort>Amount</th><th>Status</th><th>Action</th></tr></thead>
+        <tbody id="pay-rows"></tbody>
+      </table>
+    </div>
+    <div class="card-footer"><span class="muted" id="foot"></span></div>
+  </section>
+</div>
+<script src="js/config.js"></script>
+<script src="js/data.js"></script>
+<script src="js/api.js"></script>
+<script src="js/shell.js"></script>
+<script>
+  RR.ready.then(() => {
+    const { PAYMENTS, BOOKINGS, inr, fmt, esc } = RR, $ = (id) => document.getElementById(id), chips = $('chips');
+    const MODE = { cash: 'Cash', upi: 'UPI', card: 'Card', bank: 'Bank' }, TYPE = { advance: 'Advance', deposit: 'Deposit', balance: 'Balance', late_fee: 'Late fee', damage: 'Damage charge', refund: 'Refund' };
+    const IN = ['advance', 'deposit', 'balance', 'late_fee', 'damage'];
+    const wa = (b) => `https://wa.me/91${b.phone.replace(/\D/g, '')}?text=${encodeURIComponent(`Hi ${b.customer}, a payment of ${inr(b.due + b.lateFee)} is pending for booking ${b.id}. – ${RR.SETTINGS.shopName}`)}`;
+
+    function render() {
+      const today = RR.TODAY, dues = RR.dues();
+      const todayIn = PAYMENTS.filter((p) => p.date === today && IN.includes(p.type)), todayRef = PAYMENTS.filter((p) => p.date === today && p.type === 'refund');
+      const held = BOOKINGS.filter((b) => b.status === 'out' || b.status === 'overdue');
+      $('kpis').innerHTML = [
+        ['Collected today', inr(todayIn.reduce((a, p) => a + p.amount, 0)), `${todayIn.length} receipt${todayIn.length === 1 ? '' : 's'}`, 'color:var(--c-success)'],
+        ['Pending to collect', inr(dues.reduce((a, d) => a + d.amount, 0)), `from ${new Set(dues.map((d) => d.booking.no)).size} booking(s)`, 'color:var(--c-warning)'],
+        ['Deposits held', inr(held.reduce((a, b) => a + b.depositPaid, 0)), `${held.length} outfit${held.length === 1 ? '' : 's'} out`, ''],
+        ['Refunded today', inr(todayRef.reduce((a, p) => a + p.amount, 0)), `${todayRef.length} deposit refund${todayRef.length === 1 ? '' : 's'}`, ''],
+      ].map(([l, v, s, st]) => `<div class="card card-body stat"><div class="label">${l}</div><div class="value" style="${st}">${v}</div><div class="delta muted">${s}</div></div>`).join('');
+
+      const heldNos = new Set(held.map((b) => b.no));
+      const dueRows = dues.map((d) => { const b = d.booking;
+        return `<tr data-status="pending"><td>—</td><td>${fmt(b.status === 'upcoming' ? b.from : b.to)}</td><td><a href="booking.html?id=${b.no}">${b.id}</a></td><td><a href="customer.html?id=${b.customerId}">${esc(b.customer)}</a></td>
+          <td>${d.kind === 'late_fee' ? 'Late fee' : 'Balance'}</td><td>—</td><td class="num">${inr(d.amount)}</td><td><span class="indicator ${d.kind === 'late_fee' ? 'red' : 'orange'}">${d.label}</span></td>
+          <td>${RR.api.has('take_payment') ? `<button class="btn btn-primary btn-sm" data-collect="${b.no}">Collect</button>` : ''}${b.status === 'overdue' ? ` <a class="btn btn-wa btn-sm" target="_blank" rel="noopener" href="${wa(b)}">WhatsApp</a>` : ''}</td></tr>`; });
+      const payRows = PAYMENTS.map((p) => { const holding = p.type === 'deposit' && heldNos.has(p.booking), cls = holding ? 'blue' : p.type === 'refund' ? 'blue' : 'green';
+        const st = [p.type === 'refund' ? 'refund' : 'paid', holding ? 'deposit' : ''].filter(Boolean).join(' ');
+        return `<tr data-status="${st}"><td>${p.no}</td><td>${fmt(p.date)}</td><td><a href="booking.html?id=${p.booking}">${p.bookingId}</a></td><td><a href="customer.html?id=${p.customerId}">${esc(p.customer)}</a></td>
+          <td>${TYPE[p.type]}</td><td>${MODE[p.mode]}</td><td class="num">${p.type === 'refund' ? '− ' : ''}${inr(p.amount)}</td><td><span class="indicator ${cls}">${holding ? 'Held' : p.type === 'refund' ? 'Refunded' : 'Received'}</span></td>
+          <td><a class="btn btn-sm" target="_blank" href="slip.html?type=${p.type === 'refund' ? 'return' : 'booking'}&id=${p.booking}">Print</a></td></tr>`; });
+      $('pay-rows').innerHTML = [...dueRows, ...payRows].join('') || '<tr><td colspan="9" class="muted">No payments yet.</td></tr>';
+      const cnt = { all: dueRows.length + payRows.length, pending: dueRows.length, deposit: payRows.filter((r) => r.includes('"paid deposit"')).length, refund: payRows.filter((r) => r.includes('data-status="refund')).length, paid: payRows.filter((r) => r.includes('data-status="paid')).length };
+      chips.querySelectorAll('button').forEach((x) => { x.innerHTML = `${x.textContent.replace(/\s*\d+$/, '')}<span class="count">${cnt[x.dataset.status]}</span>`; });
+      $('foot').textContent = `${PAYMENTS.length} payment${PAYMENTS.length === 1 ? '' : 's'} recorded`;
+      if (chips._apply) chips._apply();
+    }
+    render(); document.addEventListener('rr:data', render);
+    $('take').addEventListener('click', () => RR.ui.paymentModal(null));
+    $('pay-rows').addEventListener('click', (e) => { const c = e.target.closest('[data-collect]'); if (c) RR.ui.paymentModal(RR.bookingByNo(c.dataset.collect)); });
+  });
+</script>
+<script src="js/app.js"></script>
+</body>
+</html>

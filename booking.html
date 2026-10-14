@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en" data-theme="light" data-density="comfortable">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27%3E%3Cpath d=%27M6 3h12l4 6-10 12L2 9Z%27 fill=%27%23ec7211%27/%3E%3C/svg%3E">
+  <title>Booking · Pratishtha Bridal</title>
+  <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/tokens.css">
+  <link rel="stylesheet" href="css/layout.css">
+  <link rel="stylesheet" href="css/components.css">
+  <link rel="stylesheet" href="css/rental.css">
+</head>
+<body data-active="bookings" data-perm="view_bookings">
+<div id="page">
+  <ol class="breadcrumbs"><li><a href="index.html">Home</a></li><li><a href="bookings.html">Bookings</a></li><li id="bc">–</li></ol>
+
+  <div class="doc-head">
+    <h1 id="title">–</h1>
+    <span class="indicator" id="status"></span>
+    <span class="spacer"></span>
+    <details class="menu">
+      <summary class="btn btn-sm">Actions <i data-icon="chevronDown"></i></summary>
+      <div class="menu-list" id="menu"></div>
+    </details>
+    <span id="primary"></span>
+  </div>
+
+  <div class="layout-2" id="main">
+    <div class="grid" style="gap:var(--s-4)">
+      <section class="card" id="stepsCard"><ol class="steps" id="steps"></ol></section>
+      <section class="card">
+        <div class="card-header"><h2>Booking details</h2></div>
+        <div class="card-body"><div class="who" style="align-items:flex-start;gap:var(--s-4)"><div style="width:84px;height:105px;border-radius:8px;overflow:hidden;border:1px solid var(--c-border);flex:none" id="photo"></div>
+          <dl class="kv" id="kv" style="flex:1;grid-template-columns:repeat(2,minmax(0,1fr))"></dl></div></div>
+      </section>
+      <section class="card">
+        <div class="card-header"><h2>Payment</h2><button class="btn btn-sm" id="addpay"><i data-icon="plus"></i> Add payment</button></div>
+        <div class="card-body" style="max-width:460px" id="money"></div>
+        <div class="table-wrap" id="paytable"></div>
+      </section>
+      <section class="card" id="retcard" hidden>
+        <div class="card-header"><h2>Return &amp; deposit settlement</h2><a class="btn btn-sm" id="rcpt" target="_blank" href="#"><i data-icon="printer"></i> Receipt</a></div>
+        <div class="card-body" id="ret"></div>
+      </section>
+      <section class="card">
+        <div class="card-header"><h2>Comments &amp; activity</h2></div>
+        <div class="card-body">
+          <div class="comment-box"><span class="avatar" id="me">ME</span><textarea class="textarea" id="cmt" placeholder="Add a comment…" style="min-height:56px"></textarea></div>
+          <div style="margin:8px 0 0 42px"><button class="btn btn-sm" id="cmtbtn">Comment</button></div>
+          <ul class="timeline" id="timeline"></ul>
+        </div>
+      </section>
+    </div>
+
+    <aside class="grid" style="gap:var(--s-4)">
+      <section class="card"><div class="card-header"><h2>Customer</h2></div><div class="card-body" id="cust"></div></section>
+      <section class="card"><div class="card-header"><h2>Connections</h2></div><div class="card-body" id="conn"></div></section>
+    </aside>
+  </div>
+</div>
+<script src="js/config.js"></script>
+<script src="js/data.js"></script>
+<script src="js/api.js"></script>
+<script src="js/shell.js"></script>
+<script>
+  RR.ready.then(() => {
+    const { inr, fmt, range, STATUS, esc } = RR, $ = (id) => document.getElementById(id);
+    const no = +new URLSearchParams(location.search).get('id') || (RR.BOOKINGS[0] && RR.BOOKINGS[0].no);
+    if (!RR.bookingByNo(no)) { document.querySelector('.content-inner').innerHTML = '<div class="alert warning"><div><strong>Booking not found</strong><a href="bookings.html">Back to bookings</a></div></div>'; return; }
+    const MODE = { cash: 'Cash', upi: 'UPI', card: 'Card', bank: 'Bank' }, TYPE = { advance: 'Advance', deposit: 'Deposit', balance: 'Balance', late_fee: 'Late fee', damage: 'Damage', refund: 'Refund' };
+    const ago = (at) => { const d = at.slice(0, 10) === RR.TODAY ? 'Today' : fmt(at); return at.length > 10 ? d + ', ' + at.slice(11, 16) : d; };
+
+    function render() {
+      const b = RR.bookingByNo(no); if (!b) return; const o = RR.outfitById(b.outfit) || { id: b.outfit, name: 'Piece ' + b.outfit, cat: '', size: '', rent: 0 };
+      const c = RR.customerOf(b), st = STATUS[b.status], days = RR.daysBetween(b.from, b.to) + 1;
+      document.title = b.id + ' · Pratishtha Bridal'; $('bc').textContent = b.id; $('title').textContent = b.id;
+      $('status').className = 'indicator ' + st.cls; $('status').textContent = b.status === 'overdue' ? `Overdue ${b.lateDays} day${b.lateDays > 1 ? 's' : ''}` : st.label;
+
+      // actions
+      const wa = RR.waLink(b.status === 'overdue' ? 'overdue' : 'confirm', b);
+      $('menu').innerHTML = `<a href="slip.html?type=booking&id=${b.no}" target="_blank">Print booking slip</a>` +
+        (b.phone ? `<a href="${wa}" target="_blank" rel="noopener">Send WhatsApp reminder</a>` : '') +
+        `<a href="booking-new.html?outfit=${b.outfit}&name=${encodeURIComponent(b.customer)}&phone=${encodeURIComponent(b.phone)}">Book again for this customer</a>` +
+        (b.status === 'upcoming' && RR.api.has('cancel_booking') ? '<button class="danger" id="cancel">Cancel booking</button>' : '');
+      $('primary').innerHTML = b.status === 'upcoming' ? (RR.api.has('handover') ? '<button class="btn btn-primary btn-sm" id="hand">Hand over outfit</button>' : '')
+        : (b.status === 'out' || b.status === 'overdue') && RR.api.has('receive_return') ? `<a class="btn btn-primary btn-sm" href="return.html?id=${b.no}">Receive return</a>` : '';
+
+      // steps
+      if (b.status === 'cancelled') { $('stepsCard').innerHTML = '<div class="card-body"><div class="alert warning"><div><strong>This booking was cancelled</strong>The piece is free again for these dates.</div></div></div>'; }
+      else {
+        const s = b.status, steps = [['Booked', 'done'], ['Picked up', s === 'upcoming' ? 'current' : 'done'], ['Returned', s === 'returned' ? 'done' : (s === 'upcoming' ? '' : 'current')]];
+        $('stepsCard').innerHTML = '<ol class="steps" id="steps">' + steps.map(([l, k], i) => `<li class="${k}"><span class="dot">${k === 'done' ? '<i data-icon="check"></i>' : i + 1}</span>${l}</li>`).join('') + '</ol>';
+      }
+
+      $('photo').innerHTML = RR.outfitPhoto(o);
+      $('kv').innerHTML = [['Customer', c ? `<a href="customer.html?id=${c.id}">${esc(b.customer)}</a>` : esc(b.customer)], ['WhatsApp', esc(b.phone) || '—'], ['ID proof', c ? esc(c.idProof) : '—'],
+        ['Piece', `<a href="outfit.html?id=${o.id}">${o.id} · ${esc(o.name)}</a>`], ...(b.weddingId && RR.weddingById(b.weddingId) && RR.api.has('view_weddings') ? [['Wedding', `<a href="wedding.html?id=${b.weddingId}">${esc(RR.weddingById(b.weddingId).code)} · ${esc(RR.weddingById(b.weddingId).bride)}</a>`]] : []), ['Pickup', fmt(b.from) + ' ' + b.from.slice(0, 4)], ['Return', `${fmt(b.to)} (${days} day${days > 1 ? 's' : ''})`], ...(b.notes ? [['Notes', esc(b.notes)]] : [])]
+        .map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('');
+
+      // money
+      const bal = b.due, line = (a, v, cls = '') => `<div class="summary-row ${cls}"><span class="muted">${a}</span><strong>${v}</strong></div>`;
+      $('money').innerHTML = line(`Rent (${days} day${days > 1 ? 's' : ''} × ${inr(b.rent / days)})`, inr(b.rent)) + line('Security deposit', inr(b.deposit)) +
+        `<div class="summary-row total"><span>Total</span><span>${inr(b.rent + b.deposit)}</span></div>` + line('Paid so far', inr(b.paid)) +
+        (b.lateFee ? line(`Late fee (${b.lateDays}d × ${inr(RR.SETTINGS.lateFeePerDay)})`, inr(b.lateFee)) : '') +
+        `<div class="summary-row big"><span>${b.status === 'upcoming' ? 'Balance at pickup' : 'Balance due'}</span><strong>${inr(bal + b.lateFee)}</strong></div>`;
+      const pays = RR.PAYMENTS.filter((p) => p.booking === b.no).sort((x, y) => (x.date < y.date ? 1 : y.id - x.id));
+      $('paytable').innerHTML = pays.length ? `<table class="table"><thead><tr><th>Date</th><th>Receipt</th><th>Type</th><th>Mode</th><th class="num">Amount</th></tr></thead><tbody>` +
+        pays.map((p) => `<tr><td>${fmt(p.date)}</td><td>${p.no}</td><td>${TYPE[p.type]}</td><td>${MODE[p.mode]}</td><td class="num">${p.type === 'refund' ? '− ' : ''}${inr(p.amount)}</td></tr>`).join('') + '</tbody></table>' : (RR.api.has('view_payments') ? '<p class="muted" style="padding:0 var(--card-pad)">No payments yet.</p>' : '<p class="muted" style="padding:0 var(--card-pad)">Individual receipts are only visible to people who can see payments. The totals above are correct.</p>');
+      $('addpay').hidden = b.status === 'cancelled' || !RR.api.has('take_payment');
+
+      // return summary
+      const r = RR.RETURNS.find((x) => x.booking === b.no); $('retcard').hidden = !r;
+      if (r) { $('rcpt').href = `slip.html?type=return&id=${b.no}`;
+        $('ret').innerHTML = `<div class="summary-row"><span class="muted">Deposit held</span><strong>${inr(r.depositHeld)}</strong></div>` + (r.lateFee ? `<div class="summary-row"><span class="muted">Late fee</span><strong>− ${inr(r.lateFee)}</strong></div>` : '') +
+          (r.damage ? `<div class="summary-row"><span class="muted">Damage / missing</span><strong>− ${inr(r.damage)}</strong></div>` : '') + (r.other ? `<div class="summary-row"><span class="muted">Other deduction</span><strong>− ${inr(r.other)}</strong></div>` : '') +
+          `<div class="summary-row total"><span>${r.net >= 0 ? 'Refunded to customer' : 'Collected from customer'}</span><span>${inr(Math.abs(r.net))}</span></div>` +
+          ((r.items || []).filter((i) => i.state !== 'ok').length ? '<p class="muted" style="margin:10px 0 4px">Issues found</p>' + r.items.filter((i) => i.state !== 'ok').map((i) => `<div class="summary-row"><span>${esc(i.name)} <span class="indicator ${i.state === 'minor' ? 'orange' : 'red'}">${i.state}</span></span><strong>${inr(i.charge)}</strong></div>`).join('') : '<p class="muted" style="margin:10px 0 0">Everything returned in good condition.</p>') +
+          (r.notes ? `<p style="margin:10px 0 0"><em>${esc(r.notes)}</em></p>` : ''); }
+
+      // timeline
+      const evs = RR.EVENTS.filter((e) => e.booking === b.no);
+      $('timeline').innerHTML = evs.map((e) => { const who = e.who || 'Team', ini = who.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase();
+        return `<li><span class="avatar">${esc(ini)}</span><div><strong>${esc(who)}</strong> ${e.kind === 'comment' ? 'commented' : ''}${e.kind === 'comment' ? `<div class="bubble">${esc(e.message)}</div>` : esc(e.message.charAt(0).toLowerCase() + e.message.slice(1))}<div class="t">${ago(e.at)}</div></div></li>`; }).join('') || '<li class="muted">No activity yet.</li>';
+      $('me').textContent = (RR.api.user.name || 'Me').split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase();
+
+      // side cards
+      $('cust').innerHTML = c ? `<div class="who"><span class="avatar md c${c.id % 6}">${esc(c.initials)}</span><div><a href="customer.html?id=${c.id}"><strong>${esc(c.name)}</strong></a><small>${esc(c.phone)} · ${esc(c.city)}</small></div></div>
+        <div class="summary-row" style="margin-top:10px"><span class="muted">Bookings</span><strong>${c.bookings.length}</strong></div><div class="summary-row"><span class="muted">Total spent</span><strong>${inr(c.spent)}</strong></div>` : '<p class="muted">Customer details are not visible to your role.</p>';
+      $('conn').innerHTML = `<div class="conn"><span>Payments <span class="count">${pays.length}</span></span></div>
+        <div class="conn"><span>Return <span class="count">${r ? 1 : 0}</span></span>${r ? `<a class="btn btn-sm" target="_blank" href="slip.html?type=return&id=${b.no}">Receipt</a>` : (b.status === 'out' || b.status === 'overdue') ? `<a class="btn btn-sm" href="return.html?id=${b.no}">+ Create</a>` : ''}</div>
+        <div class="conn"><span>Booking slip</span><a class="btn btn-sm" target="_blank" href="slip.html?type=booking&id=${b.no}">Print</a></div>`;
+      hydrateIcons(document.querySelector('.content-inner'));
+    }
+    render(); document.addEventListener('rr:data', render);
+
+    document.addEventListener('click', (e) => {
+      const b = RR.bookingByNo(no); if (!b) return;
+      if (e.target.closest('#hand')) RR.ui.handOver(b);
+      if (e.target.closest('#addpay')) RR.ui.paymentModal(b);
+      if (e.target.closest('#cancel')) { document.querySelector('.menu[open]')?.removeAttribute('open');
+        RR.ui.modal({ title: `Cancel ${b.id}?`, confirm: 'Yes, cancel booking', danger: true, body: '<p style="margin:0 0 10px">The piece becomes free for these dates. Money already received is <strong>not</strong> refunded automatically: refund it from Payments if needed.</p><div class="field"><label for="cx-r">Reason (optional)</label><input id="cx-r" class="input"></div>',
+          onConfirm: async (el) => { await RR.api.cancelBooking(b.no, el.querySelector('#cx-r').value); window.toast('Booking cancelled'); } }); }
+    });
+    $('cmtbtn').addEventListener('click', async () => {
+      const t = $('cmt').value.trim(); if (!t) return;
+      try { await RR.api.addComment(no, t); $('cmt').value = ''; } catch (e) { window.toast(e.message); }
+    });
+  });
+</script>
+<script src="js/app.js"></script>
+</body>
+</html>

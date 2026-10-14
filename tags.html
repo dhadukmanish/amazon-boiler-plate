@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en" data-theme="light" data-density="comfortable">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27%3E%3Cpath d=%27M6 3h12l4 6-10 12L2 9Z%27 fill=%27%23ec7211%27/%3E%3C/svg%3E">
+  <title>Print tags · Pratishtha Bridal</title>
+  <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/tokens.css">
+  <link rel="stylesheet" href="css/layout.css">
+  <link rel="stylesheet" href="css/components.css">
+  <link rel="stylesheet" href="css/rental.css">
+</head>
+<body data-active="inventory" data-perm="print_tags">
+<div id="page">
+  <ol class="breadcrumbs no-print"><li><a href="index.html">Home</a></li><li><a href="inventory.html">Inventory</a></li><li>Print tags</li></ol>
+  <div class="page-header no-print">
+    <div><h1>Print piece tags</h1><p>Each tag has the piece number as a QR code and a barcode. Scan it at the counter to open the piece instantly.</p></div>
+    <div class="actions"><button class="btn btn-primary" id="print"><i data-icon="printer"></i> Print <span id="cnt">0</span> tags</button></div>
+  </div>
+  <div class="alert warning no-print" id="qrwarn" hidden><div><strong>QR library not loaded</strong>You seem to be offline, so tags will show the barcode only. Reconnect, or save <code>qrcode.min.js</code> in <code>js/</code> and point the script tag at it.</div></div>
+
+  <div class="layout-2" style="grid-template-columns:minmax(260px,1fr) minmax(0,2fr)">
+    <aside class="card no-print">
+      <div class="card-header"><h2>1 · Pieces</h2><span><button class="btn btn-link btn-sm" id="all">All</button><button class="btn btn-link btn-sm" id="none">None</button></span></div>
+      <div class="card-body">
+        <input class="input" id="q" placeholder="Search number or name" aria-label="Search pieces" style="margin-bottom:8px">
+        <div class="pick-list" id="list"></div>
+      </div>
+      <div class="card-header" style="border-top:1px solid var(--c-border)"><h2>2 · Tag style</h2></div>
+      <div class="card-body form-grid" style="grid-template-columns:1fr">
+        <div class="field"><label for="size">Size</label>
+          <select id="size" class="select"><option value="t-small">Small sticker · 50 × 30 mm</option><option value="t-medium" selected>Medium label · 80 × 44 mm</option><option value="t-hanger">Hanger tag · 62 × 100 mm (with photo)</option></select></div>
+        <div class="field"><label for="copies">Copies of each</label><input id="copies" class="input" type="number" min="1" max="10" value="1"></div>
+        <label class="check"><span class="switch"><input type="checkbox" id="price" checked><span></span></span> Show rent price</label>
+        <label class="check"><span class="switch"><input type="checkbox" id="photo" checked><span></span></span> Show photo (hanger tag)</label>
+      </div>
+    </aside>
+    <section>
+      <h2 class="no-print" style="font-size:var(--fs-md);margin-bottom:var(--s-3)">Preview (actual size)</h2>
+      <div class="tag-sheet" id="sheet"></div>
+    </section>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<script src="js/config.js"></script>
+<script src="js/data.js"></script>
+<script src="js/api.js"></script>
+<script src="js/codes.js"></script>
+<script src="js/shell.js"></script>
+<script>
+RR.ready.then(() => {
+  const $ = (id) => document.getElementById(id), esc = RR.esc;
+  const ids = new Set((new URLSearchParams(location.search).get('ids') || '').split(',').filter(Boolean).map(Number));
+  const chosen = new Set(ids);
+  $('qrwarn').hidden = typeof window.qrcode === 'function';
+
+  function drawList() {
+    const q = $('q').value.trim().toLowerCase();
+    $('list').innerHTML = RR.OUTFITS.filter((o) => !q || (o.id + ' ' + o.name).toLowerCase().includes(q)).map((o) =>
+      `<label><input type="checkbox" value="${o.id}" ${chosen.has(o.id) ? 'checked' : ''}><span class="mini-photo">${RR.outfitPhoto(o)}</span><span><strong>${o.id}</strong> ${esc(o.name)}</span></label>`).join('');
+  }
+  function drawSheet() {
+    const size = $('size').value, copies = Math.max(1, Math.min(10, +$('copies').value || 1)), list = RR.OUTFITS.filter((o) => chosen.has(o.id));
+    const sheet = $('sheet'); sheet.classList.toggle('no-price', !$('price').checked); sheet.classList.toggle('no-photo', !$('photo').checked);
+    let html = '';
+    list.forEach((o) => { for (let c = 0; c < copies; c++) {
+      html += `<div class="tag ${size}"><div class="ph">${RR.outfitPhoto(o)}</div><div class="q">${Codes.qrSvg(o.id) || ''}</div>
+        <div class="meta"><div class="num">${o.id}</div><div class="nm">${esc(o.name)}</div><div class="sub">${esc(o.size)} · ${esc(o.cat)}</div><div class="price">${RR.inr(o.rent)} / day</div></div>
+        <div class="bc">${Codes.barcodeSvg(String(o.id), { height: 30, module: 2 })}<div class="bn">${o.id}</div></div></div>`;
+    } });
+    sheet.innerHTML = html || '<p class="muted no-print" style="margin:auto">Tick the pieces on the left to see their tags here.</p>';
+    const total = list.length * copies; $('cnt').textContent = total; $('print').disabled = !total;
+  }
+  $('list').addEventListener('change', (e) => { const n = +e.target.value; e.target.checked ? chosen.add(n) : chosen.delete(n); drawSheet(); });
+  $('q').addEventListener('input', drawList);
+  $('all').onclick = () => { RR.OUTFITS.forEach((o) => chosen.add(o.id)); drawList(); drawSheet(); };
+  $('none').onclick = () => { chosen.clear(); drawList(); drawSheet(); };
+  ['size', 'copies', 'price', 'photo'].forEach((id) => $(id).addEventListener('input', drawSheet));
+  $('print').onclick = () => window.print();
+  drawList(); drawSheet();
+});
+</script>
+<script src="js/app.js"></script>
+</body>
+</html>

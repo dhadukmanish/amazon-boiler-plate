@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en" data-theme="light" data-density="comfortable">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27%3E%3Cpath d=%27M6 3h12l4 6-10 12L2 9Z%27 fill=%27%23ec7211%27/%3E%3C/svg%3E">
+  <title>Dashboard · Pratishtha Bridal</title>
+  <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/tokens.css">
+  <link rel="stylesheet" href="css/layout.css">
+  <link rel="stylesheet" href="css/components.css">
+  <link rel="stylesheet" href="css/rental.css">
+</head>
+<body data-active="dashboard" data-perm="view_dashboard">
+<div id="page">
+  <div class="page-header">
+    <div><h1>Namaste <span class="muted" id="today" style="font-size:14px;font-weight:400"></span></h1></div>
+  </div>
+
+  <section class="quick-tiles">
+    <a class="tile primary" data-perm="create_booking" href="booking-new.html"><span class="ic"><i data-icon="filePlus"></i></span><div><strong>New booking</strong><span class="sub">Book an outfit for a customer</span></div></a>
+    <a class="tile" data-perm="receive_return" href="return.html"><span class="ic"><i data-icon="undo"></i></span><div><strong>Receive return</strong><span class="sub" id="t-ret">–</span></div></a>
+    <a class="tile" data-perm="view_calendar" href="calendar.html"><span class="ic"><i data-icon="calendar"></i></span><div><strong>Check availability</strong><span class="sub">Calendar of all pieces</span></div></a>
+    <a class="tile" data-perm="view_payments" href="payments.html"><span class="ic"><i data-icon="banknote"></i></span><div><strong>Take payment</strong><span class="sub" id="t-pay">–</span></div></a>
+  </section>
+
+  <section class="grid cols-4" id="kpis"></section>
+
+  <section class="layout-2">
+    <div class="card">
+      <div class="card-header"><h2>Today's schedule</h2><a href="bookings.html">All bookings</a></div>
+      <div class="table-wrap">
+        <table class="table">
+          <thead><tr><th>Customer</th><th>Piece</th><th>Type</th><th class="num">Balance</th><th></th></tr></thead>
+          <tbody id="sched"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="grid" style="gap:var(--s-5)">
+      <div class="card">
+        <div class="card-header"><h2>Overdue returns</h2></div>
+        <div class="card-body" id="late"></div>
+      </div>
+      <div class="card" data-perm="view_weddings">
+        <div class="card-header"><h2>Salon: coming up</h2><a href="salon.html">Schedule</a></div>
+        <div class="card-body" id="salon"></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><h2>Stock needs attention</h2></div>
+        <div class="card-body" id="stock"></div>
+      </div>
+    </div>
+  </section>
+</div>
+<script src="js/config.js"></script>
+<script src="js/data.js"></script>
+<script src="js/api.js"></script>
+<script src="js/shell.js"></script>
+<script>
+  RR.ready.then(() => {
+    const { BOOKINGS, OUTFITS, inr, fmt, esc } = RR, $ = (id) => document.getElementById(id), api = RR.api;
+    const wa = (b) => RR.waLink('overdue', b);
+
+    function render() {
+      const today = RR.TODAY, live = BOOKINGS.filter((b) => b.status !== 'cancelled');
+      const pick = live.filter((b) => b.from === today), ret = live.filter((b) => b.to === today), over = BOOKINGS.filter((b) => b.status === 'overdue');
+      const pending = RR.dues().reduce((a, d) => a + d.amount, 0);
+      const free = OUTFITS.filter((o) => o.status === 'available' && !RR.clash(o.id, today, today)).length;
+      const retLeft = ret.filter((b) => b.status !== 'returned').length;
+
+      $('today').textContent = new Date(today + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+      $('t-ret').textContent = retLeft ? `${retLeft} return${retLeft > 1 ? 's' : ''} due today` : 'No returns due today';
+      $('t-pay').textContent = pending ? inr(pending) + ' pending' : 'All clear';
+      $('kpis').innerHTML = [
+        ['Pickups today', pick.length, `${pick.filter((b) => b.status !== 'upcoming').length} done · ${pick.filter((b) => b.status === 'upcoming').length} left`, ''],
+        ['Returns today', ret.length, `${ret.length - retLeft} done · ${retLeft} left`, ''],
+        ['Overdue returns', over.length, over.length ? 'Call customers' : 'None', over.length ? 'color:var(--c-danger)' : ''],
+        ['Outfits available', `${free}<span class="muted" style="font-size:18px"> / ${OUTFITS.length}</span>`, 'for today', ''],
+      ].map(([l, v, s, st]) => `<div class="card card-body stat"><div class="label">${l}</div><div class="value" style="${st}">${v}</div><div class="delta ${st ? 'down' : 'muted'}">${s}</div></div>`).join('');
+
+      const rows = [...pick.map((b) => ({ b, kind: 'pickup' })), ...ret.filter((b) => b.from !== today).map((b) => ({ b, kind: 'return' }))];
+      $('sched').innerHTML = rows.map(({ b, kind }) => {
+        const o = RR.outfitById(b.outfit), done = kind === 'pickup' ? b.status !== 'upcoming' : b.status === 'returned';
+        const act = done ? '<span class="indicator green">Done</span>' : kind === 'pickup' ? (api.has('handover') ? `<button class="btn btn-sm" data-hand="${b.no}">Hand over</button>` : '') : (api.has('receive_return') ? `<a class="btn btn-sm" href="return.html?id=${b.no}">Receive</a>` : '');
+        return `<tr><td><a href="customer.html?id=${b.customerId}">${esc(b.customer)}</a></td><td><a href="outfit.html?id=${o.id}">${o.id}</a> ${esc(o.name)}</td>
+          <td><span class="indicator ${kind === 'pickup' ? 'blue' : 'orange'}">${kind === 'pickup' ? 'Pickup' : 'Return'}</span></td><td class="num">${inr(kind === 'pickup' ? b.due : 0)}</td><td>${act}</td></tr>`;
+      }).join('') || '<tr><td colspan="5" class="muted">Nothing scheduled for today.</td></tr>';
+
+      $('late').innerHTML = over.map((b) => { const o = RR.outfitById(b.outfit);
+        return `<div class="list-row"><div><strong>${esc(b.customer)}</strong><br><span class="muted">${o.id} ${esc(o.name)} · ${b.lateDays} day${b.lateDays > 1 ? 's' : ''} late · fee ${inr(b.lateFee)}</span></div>
+          <span style="display:flex;gap:6px"><a class="btn btn-wa btn-sm" target="_blank" rel="noopener" href="${wa(b)}">WhatsApp</a>${api.has('receive_return') ? `<a class="btn btn-sm" href="return.html?id=${b.no}">Return</a>` : ''}</span></div>`; }).join('') || '<p class="muted" style="margin:0">No overdue returns.</p>';
+      const fns = RR.WEVENTS.filter((e) => e.weddingStatus !== 'cancelled' && !e.done && e.date >= today && e.date <= RR.addDays(today, 14)).sort((a, b) => ((a.date + (a.start || '99')) < (b.date + (b.start || '99')) ? -1 : 1));
+      if ($('salon')) $('salon').innerHTML = fns.slice(0, 5).map((e) => `<div class="list-row"><div><a href="wedding.html?id=${e.weddingId}"><strong>${esc(e.title)}</strong></a> · ${esc(e.bride)}<br><span class="muted">${e.date === today ? 'Today' : fmt(e.date)} ${e.start || ''} · ${e.artist ? esc(e.artistName) : '<strong style="color:var(--c-warning)">no artist yet</strong>'}</span></div></div>`).join('') + (fns.length > 5 ? `<p class="muted" style="margin:8px 0 0">+ ${fns.length - 5} more in the next 2 weeks</p>` : '') || '<p class="muted" style="margin:0">No salon functions in the next 2 weeks.</p>';
+      const clean = OUTFITS.filter((o) => o.status === 'cleaning').length, rep = OUTFITS.filter((o) => o.status === 'repair').length;
+      $('stock').innerHTML = `<div class="list-row"><span><span class="badge info">Cleaning</span> &nbsp;${clean} outfit${clean === 1 ? '' : 's'}</span><a href="inventory.html?status=cleaning">View</a></div>
+        <div class="list-row"><span><span class="badge danger">Repair</span> &nbsp;${rep} outfit${rep === 1 ? '' : 's'}</span><a href="inventory.html?status=repair">View</a></div>`;
+
+      const soon = live.filter((b) => b.status === 'upcoming' && b.from > today && b.from <= RR.addDays(today, 3)).length;
+      RR.ui.setBanner(soon ? `${soon} booking${soon > 1 ? 's' : ''} starting in the next 3 days. Check the calendar to prepare the pieces.` : '');
+    }
+    render(); document.addEventListener('rr:data', render);
+    $('sched').addEventListener('click', (e) => { const b = e.target.closest('[data-hand]'); if (b) RR.ui.handOver(RR.bookingByNo(b.dataset.hand)); });
+  });
+</script>
+<script src="js/app.js"></script>
+</body>
+</html>

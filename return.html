@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en" data-theme="light" data-density="comfortable">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27%3E%3Cpath d=%27M6 3h12l4 6-10 12L2 9Z%27 fill=%27%23ec7211%27/%3E%3C/svg%3E">
+  <title>Receive return · Pratishtha Bridal</title>
+  <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/tokens.css">
+  <link rel="stylesheet" href="css/layout.css">
+  <link rel="stylesheet" href="css/components.css">
+  <link rel="stylesheet" href="css/rental.css">
+</head>
+<body data-active="bookings" data-perm="receive_return">
+<div id="page">
+  <ol class="breadcrumbs"><li><a href="index.html">Home</a></li><li><a href="bookings.html">Bookings</a></li><li>Receive return</li></ol>
+  <div class="doc-head">
+    <h1>Receive return</h1>
+    <span class="indicator orange" id="state">Select a booking</span>
+    <span class="spacer"></span>
+  </div>
+
+  <!-- 1. Find booking -->
+  <section class="card" id="pick">
+    <div class="card-header"><h2>1 · Find the booking</h2></div>
+    <div class="card-body">
+      <input class="input" id="find" placeholder="Scan or type piece number (e.g. 1025), customer name or mobile" aria-label="Find booking" autofocus>
+      <p class="hint-line" style="margin:6px 0 0">Press Enter when only one match is left to open it. These pieces are with customers right now:</p>
+      <div id="pending"></div>
+    </div>
+  </section>
+
+  <!-- 2. Check + settle -->
+  <div class="layout-2" id="work" hidden>
+    <div class="grid" style="gap:var(--s-4)">
+      <section class="card"><div class="card-body" id="sum"></div></section>
+
+      <section class="card">
+        <div class="card-header"><h2>2 · Check the condition</h2><span class="muted" id="chk-note"></span></div>
+        <div class="card-body" id="chk"></div>
+      </section>
+
+      <section class="card">
+        <div class="card-header"><h2>3 · Photos and notes</h2></div>
+        <div class="card-body">
+          <label class="btn btn-sm" for="photos" style="cursor:pointer"><i data-icon="plus"></i> Add photos</label>
+          <input id="photos" type="file" accept="image/*" multiple hidden>
+          <span class="hint-line"> Take a photo of any stain, tear or missing part.</span>
+          <div class="thumbs" id="thumbs"></div>
+          <div class="field" style="margin-top:var(--s-4)"><label for="notes">Notes (optional)</label><textarea id="notes" class="textarea" placeholder="e.g. Dupatta border torn near the corner"></textarea></div>
+        </div>
+      </section>
+    </div>
+
+    <aside class="card summary">
+      <div class="card-header"><h2>4 · Settle deposit</h2></div>
+      <div class="card-body">
+        <div class="summary-row"><span class="muted">Deposit held</span><strong id="r-dep">₹0</strong></div>
+        <div class="summary-row"><span class="muted" id="r-late-l">Late fee</span>
+          <span><input class="input" id="late" type="number" min="0" style="width:96px;text-align:right"></span></div>
+        <div class="summary-row"><span class="muted">Damage / missing</span><strong id="r-dmg">₹0</strong></div>
+        <div class="summary-row"><span class="muted">Other deduction</span>
+          <span><input class="input" id="other" type="number" min="0" value="0" style="width:96px;text-align:right"></span></div>
+        <div class="summary-row total"><span id="r-net-l">Refund to customer</span><span class="refund pos" id="r-net">₹0</span></div>
+
+        <div class="field" style="margin-top:var(--s-3)"><label for="mode" id="mode-l">Refund mode</label><select id="mode" class="select"><option value="cash">Cash</option><option value="upi">UPI</option><option value="bank">Bank transfer</option></select></div>
+        <div class="field" style="margin-top:var(--s-3)"><label for="next">Piece goes to</label>
+          <select id="next" class="select"><option value="cleaning">Cleaning</option><option value="repair">Repair</option><option value="available">Ready to rent</option></select>
+          <span class="hint" id="next-hint"></span></div>
+        <label class="check" style="margin-top:var(--s-4)"><input type="checkbox" id="ok"> I checked every item</label>
+      </div>
+      <div class="card-footer" style="flex-direction:column;align-items:stretch;gap:12px">
+        <button class="btn btn-primary btn-lg" id="finish" disabled>Complete return</button>
+        <div class="alert danger" id="err" hidden><div id="err-t"></div></div>
+        <button class="btn btn-link" id="change" style="justify-content:center">Choose another booking</button>
+      </div>
+    </aside>
+  </div>
+
+  <!-- 3. Done -->
+  <section class="card" id="done" hidden>
+    <div class="card-body" style="text-align:center;max-width:520px;margin:0 auto">
+      <span id="d-ic"></span>
+      <h2 style="margin-top:8px" id="d-title">Return completed</h2>
+      <p class="muted" id="d-sub"></p>
+      <div style="text-align:left;margin:var(--s-4) 0" id="d-lines"></div>
+      <div class="actions" style="justify-content:center">
+        <a class="btn" id="print-rc" href="slip.html?type=return" target="_blank"><i data-icon="printer"></i> Print receipt</a>
+        <a class="btn btn-wa" id="d-wa" target="_blank" rel="noopener" href="#">Send on WhatsApp</a>
+        <button class="btn btn-primary" id="another">Receive another return</button>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script src="js/config.js"></script>
+<script src="js/data.js"></script>
+<script src="js/api.js"></script>
+<script src="js/shell.js"></script>
+<script>
+  RR.ready.then(() => {
+    const { inr, fmt, range, STATUS, esc } = RR, $ = (id) => document.getElementById(id), api = RR.api;
+    const ITEMS = ['Choli (blouse)', 'Ghagra (skirt)', 'Dupatta', 'Kamarband / belt', 'Hooks & zip', 'Cleanliness'];
+    const CHARGE = { minor: [200, 200, 200, 100, 100, 200], major: [1000, 2000, 800, 300, 200, 600], missing: [1500, 3000, 800, 300, 100, 0] };   // suggested charges, staff can edit
+    const LABEL = { ok: 'OK', minor: 'Minor', major: 'Major', missing: 'Missing' };
+    const pending = () => RR.BOOKINGS.filter((b) => b.status === 'out' || b.status === 'overdue').sort((a, b) => (a.status === 'overdue' ? 0 : 1) - (b.status === 'overdue' ? 0 : 1) || (a.to < b.to ? -1 : 1));
+    let cur = null, st = [], ch = [], photos = [], nextTouched = false, busy = false;
+
+    /* ---- 1. pick ---- */
+    function renderPending() {
+      const q = $('find').value.trim().toLowerCase().replace(/^#/, '');
+      const list = pending().filter((b) => !q || (b.outfit + ' ' + b.customer + ' ' + b.phone + ' ' + b.id).toLowerCase().includes(q));
+      $('pending').innerHTML = list.map((b) => { const o = RR.outfitById(b.outfit) || { id: b.outfit, name: '' };
+        return `<div class="pend-row"><span class="mini-photo">${RR.outfitPhoto(o)}</span>
+          <div class="info"><strong>${o.id} · ${esc(o.name)}</strong><br><span class="muted">${esc(b.customer)} · ${esc(b.phone)} · ${range(b)} · ${b.id}</span></div>
+          <span class="indicator ${b.status === 'overdue' ? 'red' : 'orange'}">${b.status === 'overdue' ? 'Overdue ' + b.lateDays + 'd' : 'Due ' + fmt(b.to)}</span>
+          <button class="btn btn-sm btn-primary" data-no="${b.no}">Start return</button></div>`; }).join('') || '<p class="muted">No pieces are out with customers for this search.</p>';
+      return list;
+    }
+    $('find').addEventListener('input', renderPending);
+    $('find').addEventListener('keydown', (e) => { if (e.key === 'Enter') { const l = renderPending(); if (l.length === 1) start(l[0]); else toast(l.length ? 'Pick one from the list' : 'No match'); } });
+    $('pending').addEventListener('click', (e) => { const b = e.target.closest('[data-no]'); if (b) start(RR.bookingByNo(b.dataset.no)); });
+
+    /* ---- 2. checklist ---- */
+    function start(b) {
+      cur = b; st = ITEMS.map(() => 'ok'); ch = ITEMS.map(() => 0); photos = []; nextTouched = false; $('err').hidden = true;
+      const o = RR.outfitById(b.outfit) || { id: b.outfit, name: '' }, c = RR.customerOf(b), late = b.lateDays;
+      $('pick').hidden = true; $('done').hidden = true; $('work').hidden = false; $('state').textContent = 'Not Saved'; $('state').className = 'indicator orange';
+      $('sum').innerHTML = `<div class="who" style="align-items:flex-start;gap:var(--s-4)"><div style="width:84px;height:105px;border-radius:8px;overflow:hidden;border:1px solid var(--c-border);flex:none">${RR.outfitPhoto(o)}</div>
+        <div style="flex:1"><h2 style="font-size:var(--fs-h3)"><a href="outfit.html?id=${o.id}">${o.id} · ${esc(o.name)}</a></h2>
+          <p class="muted" style="margin:4px 0">${b.id} · <a href="customer.html?id=${c ? c.id : ''}">${esc(b.customer)}</a> · ${esc(b.phone)}</p>
+          <p style="margin:4px 0">${range(b)} · <span class="indicator ${late ? 'red' : 'orange'}">${late ? 'Overdue ' + late + ' day' + (late > 1 ? 's' : '') : 'Due ' + fmt(b.to)}</span></p>
+          <p class="muted" style="margin:4px 0">Rent ${inr(b.rent)} · Deposit held ${inr(b.depositPaid)}${b.due ? ` · <strong style="color:var(--c-danger)">${inr(b.due)} rent still unpaid</strong>` : ''}</p></div></div>`;
+      renderChk(); $('thumbs').innerHTML = ''; $('notes').value = ''; $('ok').checked = false; $('other').value = 0;
+      const fee = RR.SETTINGS.lateFeePerDay;
+      $('late').value = late * fee; $('late').max = api.has('override_late_fee') ? '' : late * fee;
+      $('r-late-l').textContent = late ? `Late fee (${late}d × ${inr(fee)})` : 'Late fee';
+      $('r-dep').textContent = inr(b.depositPaid); $('next').value = 'cleaning'; calc();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    function renderChk() {
+      $('chk').innerHTML = ITEMS.map((n, i) => `<div class="chk-row"><strong>${n}</strong>
+        <div class="seg" data-i="${i}" role="group" aria-label="${n} condition">${Object.keys(LABEL).map((k) => `<button type="button" data-v="${k}" aria-pressed="${st[i] === k}">${LABEL[k]}</button>`).join('')}</div>
+        <input class="input" type="number" min="0" data-ch="${i}" value="${ch[i]}" ${st[i] === 'ok' ? 'disabled' : ''} placeholder="Charge ₹" aria-label="${n} charge"></div>`).join('');
+    }
+    $('chk').addEventListener('click', (e) => {
+      const b = e.target.closest('button[data-v]'); if (!b) return;
+      const i = +b.parentElement.dataset.i, v = b.dataset.v;
+      st[i] = v; ch[i] = v === 'ok' ? 0 : CHARGE[v][i]; renderChk(); calc();
+    });
+    $('chk').addEventListener('input', (e) => { const i = e.target.dataset.ch; if (i !== undefined) { ch[i] = +e.target.value || 0; calc(); } });
+    ['late', 'other'].forEach((id) => $(id).addEventListener('input', calc));
+    $('next').addEventListener('change', () => { nextTouched = true; });
+    $('ok').addEventListener('change', calc);
+
+    /* ---- 3. photos (shrunk in the browser; uploaded when the return is saved) ---- */
+    $('photos').addEventListener('change', async (e) => {
+      for (const f of [...e.target.files]) { try { photos.push(await api.prepareImage(f)); } catch (err) { toast(err.message); } }
+      e.target.value = ''; drawThumbs();
+    });
+    function drawThumbs() {
+      $('thumbs').innerHTML = photos.map((p, i) => `<div class="th"><img src="${URL.createObjectURL(p)}" alt="Photo ${i + 1}"><button type="button" data-rm="${i}" aria-label="Remove photo"><i data-icon="x"></i></button></div>`).join('');
+      hydrateIcons($('thumbs'));
+    }
+    $('thumbs').addEventListener('click', (e) => { const b = e.target.closest('[data-rm]'); if (b) { photos.splice(+b.dataset.rm, 1); drawThumbs(); } });
+
+    /* ---- 4. settlement ---- */
+    function totals() {
+      const dmg = ch.reduce((a, b) => a + b, 0), late = +$('late').value || 0, other = +$('other').value || 0;
+      return { dep: cur.depositPaid, dmg, late, other, net: cur.depositPaid - late - dmg - other };
+    }
+    function calc() {
+      if (!cur) return; const t = totals();
+      $('r-dmg').textContent = inr(t.dmg);
+      const owes = t.net < 0;
+      $('r-net').textContent = inr(Math.abs(t.net)); $('r-net').className = 'refund ' + (owes ? 'neg' : 'pos');
+      $('r-net-l').textContent = owes ? 'Customer to pay' : 'Refund to customer'; $('mode-l').textContent = owes ? 'Collected by' : 'Refund mode';
+      const bad = st.some((s) => s === 'major' || s === 'missing'), any = st.some((s) => s !== 'ok');
+      if (!nextTouched) $('next').value = bad ? 'repair' : 'cleaning';
+      $('next-hint').textContent = bad ? 'Damaged or missing items found: repair is suggested.' : any ? 'Minor issues: cleaning / small fix before next booking.' : 'Normal return: goes for cleaning.';
+      $('chk-note').textContent = any ? st.filter((s) => s !== 'ok').length + ' issue(s) noted' : 'All items OK';
+      $('finish').disabled = busy || !$('ok').checked;
+    }
+
+    /* ---- finish ---- */
+    $('finish').addEventListener('click', async () => {
+      const t = totals(), next = $('next').value, mode = $('mode').value, b = cur; $('err').hidden = true;
+      busy = true; $('finish').disabled = true; $('finish').textContent = 'Saving…';
+      try {
+        const res = await api.completeReturn(b.no, { items: ITEMS.map((n, i) => ({ name: n, state: st[i], charge: ch[i] })), lateFee: t.late, other: t.other, mode, next, notes: $('notes').value.trim(), photos });
+        const net = res.net, owes = net < 0, o = RR.outfitById(b.outfit) || { id: b.outfit, name: '' };
+        const line = (a, v, cls = '') => `<div class="summary-row ${cls}"><span>${a}</span><strong>${v}</strong></div>`;
+        $('d-title').textContent = `${b.id} returned`;
+        $('d-sub').textContent = `${o.id} · ${o.name} from ${b.customer} · now in ${next === 'available' ? 'stock (ready to rent)' : next}`;
+        $('d-lines').innerHTML = line('Deposit held', inr(res.depositHeld)) + (res.lateFee ? line('Late fee', '− ' + inr(res.lateFee)) : '') + (res.damage ? line('Damage / missing', '− ' + inr(res.damage)) : '') + (res.other ? line('Other deduction', '− ' + inr(res.other)) : '') +
+          line(owes ? `Collected from customer (${mode})` : `Refunded to customer (${mode})`, inr(Math.abs(net)), 'total') + (photos.length ? `<p class="muted" style="margin:8px 0 0">${photos.length} photo(s) attached to this return.</p>` : '');
+        $('print-rc').href = 'slip.html?type=return&id=' + b.no;
+        $('d-wa').href = `https://wa.me/91${b.phone.replace(/\D/g, '')}?text=${encodeURIComponent(`Hi ${b.customer}, thank you! ${o.name} returned. ${owes ? 'Amount collected: ' + inr(-net) : 'Deposit refunded: ' + inr(net)}. – ${RR.SETTINGS.shopName}`)}`;
+        $('work').hidden = true; $('done').hidden = false; $('state').textContent = 'Completed'; $('state').className = 'indicator green';
+        $('d-ic').innerHTML = ic('checkCircle', 'done-icon'); hydrateIcons($('done')); toast('Return completed'); window.scrollTo({ top: 0, behavior: 'smooth' });
+      } catch (e) { $('err').hidden = false; $('err-t').textContent = e.message; }
+      finally { busy = false; $('finish').textContent = 'Complete return'; calc(); }
+    });
+    const reset = () => { cur = null; $('work').hidden = true; $('done').hidden = true; $('pick').hidden = false; $('find').value = ''; $('state').textContent = 'Select a booking'; $('state').className = 'indicator orange'; renderPending(); $('find').focus(); };
+    $('change').addEventListener('click', reset); $('another').addEventListener('click', reset);
+    document.addEventListener('rr:data', () => { if (!cur && !$('pick').hidden) renderPending(); });
+
+    renderPending();
+    const pre = +new URLSearchParams(location.search).get('id');           // return.html?id=1038 opens that booking directly
+    const pb = pre && pending().find((b) => b.no === pre); if (pb) start(pb);
+  });
+</script>
+<script src="js/app.js"></script>
+</body>
+</html>

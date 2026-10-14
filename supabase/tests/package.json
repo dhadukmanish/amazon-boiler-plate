@@ -1,0 +1,7 @@
+{
+  "name": "rang-rentals-db-tests",
+  "private": true,
+  "description": "Runs supabase/schema.sql, storage.sql and seed.sql in an in-memory Postgres (PGlite) and checks the booking, return, payment and role rules.",
+  "scripts": { "test": "node schema.test.js && node seed.test.js" },
+  "devDependencies": { "@electric-sql/pglite": "^0.3.0" }
+}

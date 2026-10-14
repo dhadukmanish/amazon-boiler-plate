@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en" data-theme="light" data-density="comfortable">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27%3E%3Cpath d=%27M6 3h12l4 6-10 12L2 9Z%27 fill=%27%23ec7211%27/%3E%3C/svg%3E">
+  <title>New booking · Pratishtha Bridal</title>
+  <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/tokens.css">
+  <link rel="stylesheet" href="css/layout.css">
+  <link rel="stylesheet" href="css/components.css">
+  <link rel="stylesheet" href="css/rental.css">
+</head>
+<body data-active="bookings" data-perm="create_booking">
+<div id="page">
+  <ol class="breadcrumbs"><li><a href="index.html">Home</a></li><li><a href="bookings.html">Bookings</a></li><li>New booking</li></ol>
+  <div class="doc-head">
+    <h1>New booking</h1>
+    <span class="indicator orange" data-indicator>Not Saved</span>
+    <span class="spacer"></span>
+    <button class="btn btn-sm" data-save>Save <kbd>Ctrl S</kbd></button>
+  </div>
+
+  <form class="layout-2" id="bk" data-form onsubmit="return false">
+    <div class="card"><div class="card-body form-grid">
+      <h3 class="section-title">1 · Customer</h3>
+      <div class="field"><label for="phone">WhatsApp number</label><input id="phone" class="input" inputmode="tel" placeholder="98250 11122" autocomplete="off"></div>
+      <div class="field"><label for="name">Customer name</label><input id="name" class="input" placeholder="e.g. Priya Patel" autocomplete="off"></div>
+      <div id="custnote" style="grid-column:1/-1" hidden></div>
+      <div class="field" id="newonly1" hidden><label for="city">City</label><input id="city" class="input" value="Surat"></div>
+      <div class="field" id="newonly2" hidden><label for="idp">ID proof taken</label><select id="idp" class="select"><option>Aadhaar</option><option>Driving licence</option><option>Voter ID</option></select></div>
+
+      <h3 class="section-title">2 · Outfit and dates</h3>
+      <div class="field" style="grid-column:1/-1"><label for="outfit">Outfit</label>
+        <select id="outfit" class="select"></select>
+        <div id="preview" style="display:flex;gap:12px;align-items:center;margin-top:8px"></div></div>
+      <div class="field"><label for="from">Pickup date</label><input id="from" class="input" type="date"></div>
+      <div class="field"><label for="to">Return date</label><input id="to" class="input" type="date"></div>
+      <div id="avail" class="alert success" style="grid-column:1/-1"><div><strong>Available</strong>This outfit is free on the selected dates.</div></div>
+
+      <h3 class="section-title">3 · Payment</h3>
+      <div class="field"><label for="advance">Advance received now (₹)</label><input id="advance" class="input" type="number" min="0"><span class="hint" id="adv-hint"></span></div>
+      <div class="field"><label for="mode">Payment mode</label><select id="mode" class="select"><option value="cash">Cash</option><option value="upi">UPI</option><option value="card">Card</option><option value="bank">Bank transfer</option></select></div>
+      <div class="field" style="grid-column:1/-1"><label for="notes">Notes (optional)</label><textarea id="notes" class="textarea" placeholder="Blouse alteration, special request…"></textarea></div>
+    </div></div>
+
+    <aside class="card summary">
+      <div class="card-header"><h2>Summary</h2></div>
+      <div class="card-body">
+        <div class="summary-row"><span class="muted">Days</span><strong id="s-days">–</strong></div>
+        <div class="summary-row"><span class="muted">Rent</span><strong id="s-rent">₹0</strong></div>
+        <div class="summary-row"><span class="muted">Security deposit (refundable)</span><strong id="s-dep">₹0</strong></div>
+        <div class="summary-row total"><span>Total to pay</span><span id="s-total">₹0</span></div>
+        <div class="summary-row"><span class="muted">Advance paid</span><strong id="s-adv">₹0</strong></div>
+        <div class="summary-row big"><span>Balance at pickup</span><strong id="s-bal">₹0</strong></div>
+      </div>
+      <div class="card-footer" style="gap:12px;flex-direction:column;align-items:stretch">
+        <button class="btn btn-primary btn-lg" id="confirm" type="button">Confirm booking</button>
+        <div class="alert danger" id="err" hidden><div id="err-t"></div></div>
+        <a class="btn btn-link" href="bookings.html" style="justify-content:center">Cancel</a>
+      </div>
+    </aside>
+  </form>
+
+  <section class="card" id="done" hidden>
+    <div class="card-body" style="text-align:center;max-width:520px;margin:0 auto">
+      <span id="d-ic"></span>
+      <h2 style="margin-top:8px" id="d-title">Booking confirmed</h2>
+      <p class="muted" id="d-sub"></p>
+      <div class="actions" style="justify-content:center">
+        <a class="btn btn-primary" id="d-slip" target="_blank" href="#"><i data-icon="printer"></i> Print booking slip</a>
+        <a class="btn btn-wa" id="d-wa" target="_blank" rel="noopener" href="#">Send on WhatsApp</a>
+        <a class="btn" id="d-view" href="#">View booking</a>
+        <a class="btn btn-link" href="booking-new.html">New booking</a>
+      </div>
+    </div>
+  </section>
+</div>
+<script src="js/config.js"></script>
+<script src="js/data.js"></script>
+<script src="js/api.js"></script>
+<script src="js/shell.js"></script>
+<script>
+  RR.ready.then(() => {
+    const { inr, esc } = RR, $ = (id) => document.getElementById(id), qs = new URLSearchParams(location.search);
+    const digits = (s) => String(s || '').replace(/\D/g, '').slice(-10);
+    let existing = null, lastOutfit = null, advTouched = false, busy = false;
+
+    // pieces that can be booked (repair ones cannot); ?outfit=1014 preselects, ?from=&to= come from the calendar, ?name=&phone= from a customer page
+    const rentable = RR.OUTFITS.filter((o) => o.status !== 'repair');
+    $('outfit').innerHTML = rentable.map((o) => `<option value="${o.id}">${o.id} · ${esc(o.name)} — ${inr(o.rent)}/day</option>`).join('');
+    if (qs.get('outfit') && rentable.some((o) => o.id === +qs.get('outfit'))) $('outfit').value = qs.get('outfit');
+    $('from').min = $('to').min = RR.TODAY;
+    $('from').value = qs.get('from') || RR.TODAY; $('to').value = qs.get('to') || RR.addDays($('from').value, 2);
+    if (qs.get('phone')) $('phone').value = qs.get('phone');
+    const wedding = qs.get('wedding') ? RR.weddingById(qs.get('wedding')) : null;           // ?wedding=5003 comes from the wedding page
+    if (wedding) {
+      document.querySelector('.doc-head h1').textContent = 'Book an outfit for a wedding';
+      $('bk').insertAdjacentHTML('beforebegin', `<div class="alert info"><div><strong>For wedding <a href="wedding.html?id=${wedding.id}">${esc(wedding.code)} · ${esc(wedding.bride)}</a></strong>Wedding date ${RR.fmt(wedding.date)}. This outfit will be listed on her wedding page.</div></div>`);
+      if (!qs.get('from') && wedding.date > RR.TODAY) { $('from').value = RR.addDays(wedding.date, -1) < RR.TODAY ? RR.TODAY : RR.addDays(wedding.date, -1); $('to').value = wedding.date; }   // typical bridal rental: day before to the wedding day
+    }
+    if (qs.get('name')) $('name').value = qs.get('name');
+
+    function lookup() {
+      const d = digits($('phone').value);
+      existing = d.length === 10 ? RR.CUSTOMERS.find((c) => digits(c.phone) === d) : null;
+      const note = $('custnote');
+      if (existing) {
+        $('name').value = existing.name; $('name').readOnly = true;
+        note.hidden = false; note.className = 'alert info'; note.innerHTML = `<div><strong>Existing customer</strong>${existing.bookings.length} booking${existing.bookings.length === 1 ? '' : 's'}, ${inr(existing.spent)} spent${existing.due ? ` · <strong style="color:var(--c-danger)">${inr(existing.due)} due</strong>` : ''}${existing.hasLate ? ' · <strong style="color:var(--c-danger)">has an overdue return</strong>' : ''}. <a href="customer.html?id=${existing.id}" target="_blank">Open profile</a></div>`;
+      } else {
+        $('name').readOnly = false; note.hidden = d.length !== 10; note.className = 'alert success'; note.innerHTML = '<div><strong>New customer</strong>Will be saved with this booking.</div>';
+      }
+      $('newonly1').hidden = $('newonly2').hidden = !(d.length === 10 && !existing);
+    }
+
+    function calc() {
+      const o = RR.outfitById($('outfit').value); if (!o) return;
+      if (lastOutfit !== o.id) {
+        lastOutfit = o.id; advTouched = false;
+        $('preview').innerHTML = `<div style="width:56px;height:70px;border-radius:6px;overflow:hidden;border:1px solid var(--c-border);flex:none">${RR.outfitPhoto(o)}</div>
+          <div><strong>${o.id} · ${esc(o.name)}</strong><br><span class="muted">${esc(o.cat)} · Size ${esc(o.size)} · Deposit ${inr(o.dep)} · <a href="outfit.html?id=${o.id}">Booking history</a></span></div>`;
+      }
+      const from = $('from').value, to = $('to').value, days = from && to ? RR.daysBetween(from, to) + 1 : 0;
+      const rent = Math.max(0, days) * o.rent, total = rent + o.dep;
+      if (!advTouched) $('advance').value = Math.round((o.dep + rent * RR.SETTINGS.advancePct / 100) / 10) * 10 || '';
+      const adv = Math.min(+$('advance').value || 0, Infinity);
+      $('adv-hint').textContent = `Counts towards the deposit first. Suggested: deposit + ${RR.SETTINGS.advancePct}% of rent.`;
+      $('s-days').textContent = days > 0 ? days : '–'; $('s-rent').textContent = inr(rent); $('s-dep').textContent = inr(o.dep);
+      $('s-total').textContent = inr(total); $('s-adv').textContent = inr(adv); $('s-bal').textContent = inr(total - adv);
+
+      const clash = days > 0 && RR.clash(o.id, from, to), past = from && from < RR.TODAY, short = days > 0 && days < RR.SETTINGS.minDays, badAdv = adv < 0 || adv > total;
+      const box = $('avail'); let kind = 'success', html = '<div><strong>Available</strong>This outfit is free on the selected dates.</div>';
+      if (days <= 0) { kind = 'warning'; html = '<div><strong>Check dates</strong>Return date must be on or after the pickup date.</div>'; }
+      else if (past) { kind = 'warning'; html = '<div><strong>Check dates</strong>Pickup date cannot be in the past.</div>'; }
+      else if (short) { kind = 'warning'; html = `<div><strong>Too short</strong>Minimum rental is ${RR.SETTINGS.minDays} day(s).</div>`; }
+      else if (clash) { kind = 'danger'; html = `<div><strong>Already booked</strong>Piece ${o.id} is booked ${RR.range(clash)} (${clash.id}${clash.customer ? ', ' + esc(clash.customer) : ''}); the day after a return is kept for cleaning. Choose other dates or another outfit.</div>`; }
+      box.className = 'alert ' + kind; box.innerHTML = html;
+      $('confirm').disabled = busy || !!clash || days <= 0 || past || short || badAdv;
+    }
+
+    ['phone'].forEach((id) => $(id).addEventListener('input', () => { lookup(); calc(); }));
+    ['outfit', 'from', 'to', 'advance'].forEach((id) => $(id).addEventListener('input', (e) => { if (id === 'advance') advTouched = true; calc(); }));
+    document.addEventListener('rr:data', () => { if (!busy) { lookup(); calc(); } });
+
+    async function confirm() {
+      $('err').hidden = true;
+      const phone = $('phone').value, name = $('name').value.trim();
+      if (digits(phone).length !== 10) { $('phone').focus(); return showErr('Enter the customer\'s 10-digit WhatsApp number.'); }
+      if (!name) { $('name').focus(); return showErr('Enter the customer\'s name.'); }
+      busy = true; $('confirm').disabled = true; $('confirm').textContent = 'Saving…';
+      try {
+        let cid = existing && existing.id;
+        if (!cid) cid = await RR.api.addCustomer({ name, phone, city: $('city').value, idProof: $('idp').value });
+        const no = await RR.api.createBooking({ piece: +$('outfit').value, customerId: cid, from: $('from').value, to: $('to').value, advance: +$('advance').value || 0, mode: $('mode').value, notes: $('notes').value, weddingId: wedding ? wedding.id : undefined });
+        const b = RR.bookingByNo(no);
+        $('bk').hidden = true; $('done').hidden = false; document.querySelector('.doc-head [data-indicator]').hidden = true; document.querySelector('.doc-head [data-save]').hidden = true;
+        $('d-ic').innerHTML = ic('checkCircle', 'done-icon'); $('d-title').textContent = `${b.id} confirmed`;
+        $('d-sub').textContent = `${RR.outfitById(b.outfit).id} · ${RR.outfitById(b.outfit).name} for ${b.customer}, ${RR.range(b)}. Balance at pickup ${inr(b.due)}.`;
+        $('d-slip').href = `slip.html?type=booking&id=${no}`; $('d-view').href = `booking.html?id=${no}`;
+        if (wedding) { $('d-view').insertAdjacentHTML('afterend', ` <a class="btn" href="wedding.html?id=${wedding.id}">Back to ${esc(wedding.code)}</a>`); }
+        $('d-wa').href = RR.waLink('confirm', b);
+        hydrateIcons($('done')); window.scrollTo({ top: 0, behavior: 'smooth' });
+      } catch (e) { showErr(e.message); if (e.existingId) { $('phone').dispatchEvent(new Event('input')); } }
+      finally { busy = false; $('confirm').textContent = 'Confirm booking'; calc(); }
+    }
+    const showErr = (m) => { $('err').hidden = false; $('err-t').textContent = m; };
+    $('confirm').addEventListener('click', confirm);
+    $('bk').addEventListener('rr:save', (e) => { e.preventDefault(); if (!$('confirm').disabled) confirm(); });    // Save / Ctrl+S = confirm
+    lookup(); calc();
+  });
+</script>
+<script src="js/app.js"></script>
+</body>
+</html>

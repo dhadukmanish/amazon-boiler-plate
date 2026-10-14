@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en" data-theme="light" data-density="comfortable">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27%3E%3Cpath d=%27M6 3h12l4 6-10 12L2 9Z%27 fill=%27%23ec7211%27/%3E%3C/svg%3E">
+  <title>Weddings · Pratishtha Bridal</title>
+  <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/tokens.css">
+  <link rel="stylesheet" href="css/layout.css">
+  <link rel="stylesheet" href="css/components.css">
+  <link rel="stylesheet" href="css/rental.css">
+</head>
+<body data-active="weddings" data-perm="view_weddings">
+<div id="page">
+  <div class="page-header">
+    <div><h1>Weddings</h1><p>Every bride in one place: functions, salon package, rented outfits, payments and checklist.</p></div>
+    <div class="actions"><a class="btn" href="salon.html"><i data-icon="sparkles"></i> Salon schedule</a><button class="btn btn-primary" id="new" data-perm="edit_weddings"><i data-icon="plus"></i> New wedding</button></div>
+  </div>
+
+  <section class="grid cols-4" id="kpis"></section>
+
+  <section class="card" data-table>
+    <div class="toolbar">
+      <input class="input" data-filter placeholder="Search bride, groom, venue or phone" aria-label="Search weddings">
+      <div class="chips" data-chips data-for="#rows" id="chips">
+        <button data-status="all" aria-pressed="true">All</button>
+        <button data-status="soon" aria-pressed="false">Next 30 days</button>
+        <button data-status="enquiry" aria-pressed="false">Enquiry</button>
+        <button data-status="confirmed" aria-pressed="false">Confirmed</button>
+        <button data-status="completed" aria-pressed="false">Completed</button>
+        <button data-status="cancelled" aria-pressed="false">Cancelled</button>
+      </div>
+    </div>
+    <div class="table-wrap"><table class="table">
+      <thead><tr><th data-sort>Bride</th><th data-sort>Wedding date</th><th>Venue</th><th>Status</th><th>Functions</th><th>Outfits</th><th class="num" data-sort>Total</th><th class="num" data-sort>Balance</th><th>Checklist</th></tr></thead>
+      <tbody id="rows"></tbody></table></div>
+    <div class="card-footer"><span class="muted" id="foot"></span></div>
+  </section>
+</div>
+
+<script src="js/config.js"></script>
+<script src="js/data.js"></script>
+<script src="js/api.js"></script>
+<script src="js/shell.js"></script>
+<script>
+  RR.ready.then(() => {
+    const { WEDDINGS, WSTATUS, inr, fmt, esc } = RR, $ = (id) => document.getElementById(id), api = RR.api, chips = $('chips');
+    const when = (w) => (w.daysLeft === 0 ? 'today' : w.daysLeft > 0 ? `in ${w.daysLeft} day${w.daysLeft === 1 ? '' : 's'}` : `${-w.daysLeft} day${w.daysLeft === -1 ? '' : 's'} ago`);
+    const isActive = (w) => w.status === 'enquiry' || w.status === 'confirmed';
+    const flags = (w) => [w.status, isActive(w) && w.daysLeft >= 0 && w.daysLeft <= 30 && 'soon'].filter(Boolean).join(' ');
+
+    function render() {
+      const act = WEDDINGS.filter((w) => w.status !== 'cancelled');
+      const kp = [
+        ['Next 30 days', WEDDINGS.filter((w) => isActive(w) && w.daysLeft >= 0 && w.daysLeft <= 30).length, 'weddings coming up', ''],
+        ['Confirmed', WEDDINGS.filter((w) => w.status === 'confirmed').length, 'dates booked', ''],
+        ['Enquiries', WEDDINGS.filter((w) => w.status === 'enquiry').length, 'waiting for a decision', ''],
+        ['To collect', inr(act.reduce((a, w) => a + w.balance + w.rentalDue, 0)), 'salon balance + rental dues', 'color:var(--c-warning)'],
+      ];
+      $('kpis').innerHTML = kp.map(([l, v, s, st]) => `<div class="card card-body stat"><div class="label">${l}</div><div class="value" style="${st}">${v}</div><div class="delta muted">${s}</div></div>`).join('');
+
+      $('rows').innerHTML = WEDDINGS.map((w) => { const st = WSTATUS[w.status], nx = w.nextEvent, pct = w.tasksTotal ? Math.round(w.tasksDone / w.tasksTotal * 100) : 0;
+        return `<tr class="click" data-status="${flags(w)}" data-href="wedding.html?id=${w.id}">
+          <td><div class="who"><span class="avatar md c${w.id % 6}">${esc(w.initials)}</span><div><a href="wedding.html?id=${w.id}"><strong>${esc(w.bride)}</strong></a><small>${w.code}${w.groom ? ' · with ' + esc(w.groom) : ''}</small></div></div></td>
+          <td>${fmt(w.date)} ${w.date.slice(0, 4)}<br><span class="wd-pill ${w.daysLeft < 0 ? 'past' : w.daysLeft <= 7 && isActive(w) ? 'soon' : ''}">${when(w)}</span></td>
+          <td>${esc(w.venue) || '<span class="muted">—</span>'}<br><span class="muted">${esc(w.city)}</span></td>
+          <td><span class="indicator ${st.cls}">${st.label}</span></td>
+          <td>${w.events.length}${nx ? `<br><span class="muted">next: ${esc(nx.title)} ${fmt(nx.date)}</span>` : ''}</td>
+          <td>${w.rentals.length || '<span class="muted">—</span>'}</td>
+          <td class="num">${inr(w.total)}</td><td class="num" style="${w.balance && w.status !== 'cancelled' ? 'color:var(--c-warning);font-weight:700' : ''}">${w.balance ? inr(w.balance) : '—'}</td>
+          <td><div class="progress" title="${w.tasksDone} of ${w.tasksTotal} done"><i style="width:${pct}%"></i></div><span class="muted" style="font-size:var(--fs-xs)">${w.tasksDone}/${w.tasksTotal}</span></td></tr>`; }).join('')
+        || '<tr><td colspan="9" class="muted">No weddings yet. Press “New wedding” to add the first bride.</td></tr>';
+      const cnt = (f) => WEDDINGS.filter((w) => flags(w).split(' ').includes(f)).length;
+      chips.querySelectorAll('button').forEach((x) => { const s = x.dataset.status; x.innerHTML = `${x.textContent.replace(/\s*\d+$/, '')}<span class="count">${s === 'all' ? WEDDINGS.length : cnt(s)}</span>`; });
+      $('foot').textContent = `${WEDDINGS.length} wedding${WEDDINGS.length === 1 ? '' : 's'}`;
+      if (chips._apply) chips._apply();
+    }
+    render(); document.addEventListener('rr:data', render);
+    $('rows').addEventListener('click', (e) => { const tr = e.target.closest('tr'); if (tr && tr.dataset.href && !e.target.closest('a,button')) location.href = tr.dataset.href; });
+
+    /* ---- new wedding ---- */
+    const digits = (s) => String(s || '').replace(/\D/g, '').slice(-10);
+    function newWedding() {
+      let existing = null;
+      const m = RR.ui.modal({ title: 'New wedding', confirm: 'Create wedding',
+        body: `<div class="form-grid">
+          <div class="field"><label for="nw-p">Bride's WhatsApp number</label><input id="nw-p" class="input" inputmode="tel" placeholder="98250 11122" autocomplete="off"></div>
+          <div class="field"><label for="nw-n">Bride's name</label><input id="nw-n" class="input" autocomplete="off"></div>
+          <div id="nw-note" style="grid-column:1/-1" hidden></div>
+          <div class="field"><label for="nw-g">Groom's name</label><input id="nw-g" class="input"></div>
+          <div class="field"><label for="nw-d">Wedding date</label><input id="nw-d" class="input" type="date" min="${RR.TODAY}"></div>
+          <div class="field"><label for="nw-v">Venue</label><input id="nw-v" class="input" placeholder="e.g. Sarsana Party Plot"></div>
+          <div class="field"><label for="nw-c">City</label><input id="nw-c" class="input" value="Surat"></div>
+          <div class="field"><label for="nw-s">Status</label><select id="nw-s" class="select"><option value="enquiry">Enquiry (not confirmed yet)</option><option value="confirmed">Confirmed</option></select></div></div>`,
+        onConfirm: async (el) => {
+          const v = (k) => el.querySelector('#' + k).value;
+          if (digits(v('nw-p')).length !== 10) throw new Error("Enter the bride's 10-digit WhatsApp number.");
+          if (!v('nw-n').trim()) throw new Error("Enter the bride's name.");
+          if (!v('nw-d')) throw new Error('Choose the wedding date.');
+          let cid = existing && existing.id;
+          if (!cid) cid = await api.addCustomer({ name: v('nw-n'), phone: v('nw-p'), city: v('nw-c') });
+          const id = await api.createWedding({ customerId: cid, groom: v('nw-g'), date: v('nw-d'), venue: v('nw-v'), city: v('nw-c'), status: v('nw-s') });
+          toast('Wedding created'); location.href = 'wedding.html?id=' + id;
+        } });
+      const q = (id) => m.el.querySelector('#' + id);
+      q('nw-p').addEventListener('input', () => {
+        const d = digits(q('nw-p').value); existing = d.length === 10 ? RR.CUSTOMERS.find((c) => digits(c.phone) === d) : null; const note = q('nw-note');
+        if (existing) { q('nw-n').value = existing.name; q('nw-n').readOnly = true; note.hidden = false; note.className = 'alert info'; note.innerHTML = `<div><strong>Existing customer</strong>${esc(existing.name)} is already in your customers${existing.weddings && existing.weddings.length ? ` (has ${existing.weddings.length} wedding${existing.weddings.length > 1 ? 's' : ''})` : ''}.</div>`; }
+        else { q('nw-n').readOnly = false; note.hidden = true; }
+      });
+    }
+    $('new').addEventListener('click', newWedding);
+    if (new URLSearchParams(location.search).get('new') && api.has('edit_weddings')) newWedding();
+  });
+</script>
+<script src="js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en" data-theme="light" data-density="comfortable">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27%3E%3Cpath d=%27M6 3h12l4 6-10 12L2 9Z%27 fill=%27%23ec7211%27/%3E%3C/svg%3E">
+  <title>Reports · Pratishtha Bridal</title>
+  <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/tokens.css">
+  <link rel="stylesheet" href="css/layout.css">
+  <link rel="stylesheet" href="css/components.css">
+  <link rel="stylesheet" href="css/rental.css">
+</head>
+<body data-active="reports" data-perm="view_reports">
+<div id="page">
+  <div class="page-header">
+    <div><h1>Reports</h1><p id="range-label">Summary for the last 7 days</p></div>
+    <div class="actions">
+      <div class="seg" id="range" role="group" aria-label="Date range">
+        <button data-range="week" aria-pressed="true">7 days</button>
+        <button data-range="month" aria-pressed="false">This month</button>
+        <button data-range="year" aria-pressed="false">This year</button>
+      </div>
+      <button class="btn" id="csv"><i data-icon="filePlus"></i> Export CSV</button>
+      <button class="btn" onclick="window.print()"><i data-icon="list"></i> Print</button>
+    </div>
+  </div>
+
+  <section class="grid cols-4">
+    <div class="card card-body stat"><div class="label">Rental revenue</div><div class="value" id="k-rev">–</div><div class="delta" id="k-rev-d"></div></div>
+    <div class="card card-body stat"><div class="label">Bookings</div><div class="value" id="k-bk">–</div><div class="delta muted" id="k-avg"></div></div>
+    <div class="card card-body stat"><div class="label">Stock utilisation</div><div class="value" id="k-ut">–</div><div class="delta muted">rented piece-days vs available</div></div>
+    <div class="card card-body stat"><div class="label">Late returns</div><div class="value" id="k-late" style="color:var(--c-danger)">–</div><div class="delta muted" id="k-late-d"></div></div>
+  </section>
+
+  <section class="layout-2">
+    <div class="card">
+      <div class="card-header"><h2 id="chart-title">Revenue by day</h2><span class="muted" id="chart-peak"></span></div>
+      <div class="card-body"><div class="chart" id="chart" role="img" aria-label="Revenue chart"></div><div class="chart-labels" id="chart-labels"></div></div>
+    </div>
+    <div class="card">
+      <div class="card-header"><h2>Payment mode</h2></div>
+      <div class="card-body donut-wrap">
+        <div class="donut" id="donut" role="img" aria-label="Payment mode split"></div>
+        <ul class="legend" id="legend"></ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="layout-2">
+    <div class="card" data-table>
+      <div class="card-header"><h2>Top rented outfits</h2><a href="inventory.html">Open inventory</a></div>
+      <div class="table-wrap"><table class="table" id="top">
+        <thead><tr><th>#</th><th data-sort>Outfit</th><th data-sort>Category</th><th class="num" data-sort>Times rented</th><th class="num" data-sort>Rent earned</th><th class="num" data-sort>Utilisation</th></tr></thead>
+        <tbody></tbody></table></div>
+    </div>
+    <div class="grid" style="gap:var(--s-4)">
+      <div class="card">
+        <div class="card-header"><h2>Revenue by category</h2></div>
+        <div class="card-body" id="cats"></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><h2>Late returns</h2><a href="bookings.html?status=overdue">View all</a></div>
+        <div class="card-body" id="late"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card" data-perm="view_weddings" id="wd-sec">
+    <div class="card-header"><h2>Bridal salon and weddings</h2><a href="weddings.html">Open weddings</a></div>
+    <div class="card-body"><div class="grid cols-4" id="wd-kpis"></div></div>
+    <div class="table-wrap"><table class="table"><thead><tr><th>Service sold</th><th class="num">Times</th><th class="num">Revenue</th></tr></thead><tbody id="wd-top"></tbody></table></div>
+  </section>
+
+  <section>
+    <h2 style="font-size:var(--fs-md);margin-bottom:var(--s-3)" class="muted">Related</h2>
+    <div class="report-links">
+      <a href="payments.html"><i data-icon="banknote"></i> Daily collection (Payments)</a>
+      <a href="inventory.html"><i data-icon="shirt"></i> Outfit-wise stock</a>
+      <a href="customers.html"><i data-icon="users"></i> Customer-wise bookings</a>
+      <a href="payments.html?status=deposit"><i data-icon="wallet"></i> Deposits held</a>
+      <a href="bookings.html?status=overdue"><i data-icon="clock"></i> Overdue returns</a>
+    </div>
+  </section>
+</div>
+<script src="js/config.js"></script>
+<script src="js/data.js"></script>
+<script src="js/api.js"></script>
+<script src="js/shell.js"></script>
+<script>
+  RR.ready.then(() => {
+    const { BOOKINGS, OUTFITS, PAYMENTS, RETURNS, inr, fmt, esc, addDays, daysBetween } = RR, $ = (id) => document.getElementById(id);
+    const COLORS = ['var(--c-primary-600)', 'var(--c-accent-600)', 'var(--c-success)', 'var(--c-border-strong)'];
+    const MODES = { cash: 'Cash', upi: 'UPI', card: 'Card', bank: 'Bank' }, MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    let cur = 'week', lastRows = [];
+
+    /* the date window for each switch, plus the same-length window before it for the "vs previous" figure */
+    function window_(key) {
+      const t = RR.TODAY, y = +t.slice(0, 4), m = +t.slice(5, 7);
+      if (key === 'week') return { from: addDays(t, -6), to: t, prevFrom: addDays(t, -13), prevTo: addDays(t, -7), label: 'the last 7 days', title: 'Revenue by day' };
+      if (key === 'month') { const f = `${y}-${String(m).padStart(2, '0')}-01`, n = daysBetween(f, t) + 1; return { from: f, to: t, prevFrom: addDays(f, -n), prevTo: addDays(f, -1), label: new Date(y, m - 1, 1).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }) + ' so far', title: 'Revenue by day' }; }
+      return { from: `${y}-01-01`, to: t, prevFrom: `${y - 1}-01-01`, prevTo: `${y - 1}${t.slice(4)}`, label: `Jan – ${MONTHS[m - 1]} ${y}`, title: 'Revenue by month' };
+    }
+    const inRange = (d, a, b) => d >= a && d <= b;
+    const rentIn = (a, b) => BOOKINGS.filter((x) => x.status !== 'cancelled' && inRange(x.from, a, b)).reduce((s, x) => s + x.rent, 0);
+
+    function render(key) {
+      cur = key; const w = window_(key), live = BOOKINGS.filter((b) => b.status !== 'cancelled'), inW = live.filter((b) => inRange(b.from, w.from, w.to));
+      const total = inW.reduce((a, b) => a + b.rent, 0), prev = rentIn(w.prevFrom, w.prevTo), nDays = daysBetween(w.from, w.to) + 1;
+      $('range-label').textContent = 'Summary for ' + w.label;
+      $('k-rev').textContent = inr(total);
+      const pct = prev ? Math.round((total - prev) / prev * 100) : null;
+      $('k-rev-d').className = 'delta ' + (pct == null ? 'muted' : pct >= 0 ? 'up' : 'down'); $('k-rev-d').textContent = pct == null ? 'no earlier period to compare' : `${pct >= 0 ? '▲' : '▼'} ${Math.abs(pct)}% vs previous period`;
+      $('k-bk').textContent = inW.length.toLocaleString('en-IN'); $('k-avg').textContent = inW.length ? 'avg ' + inr(total / inW.length) + ' per booking' : 'no bookings in this period';
+
+      // utilisation: rented piece-days inside the window / (pieces x days)
+      const rentedDays = live.reduce((a, b) => { const s = b.from > w.from ? b.from : w.from, e = b.to < w.to ? b.to : w.to; return a + (e >= s ? daysBetween(s, e) + 1 : 0); }, 0);
+      $('k-ut').textContent = OUTFITS.length ? Math.min(100, Math.round(rentedDays / (OUTFITS.length * nDays) * 100)) + '%' : '–';
+
+      // late returns: returned late inside the window + still overdue now
+      const lateRet = RETURNS.filter((r) => r.lateFee > 0 && inRange(r.date, w.from, w.to)), overdue = BOOKINGS.filter((b) => b.status === 'overdue');
+      const returnedN = RETURNS.filter((r) => inRange(r.date, w.from, w.to)).length;
+      $('k-late').textContent = lateRet.length + overdue.length;
+      $('k-late-d').textContent = returnedN ? `${Math.round(lateRet.length / returnedN * 100)}% of ${returnedN} returns · ${overdue.length} overdue now` : `${overdue.length} overdue now`;
+
+      // chart buckets
+      const buckets = key === 'year' ? Array.from({ length: +RR.TODAY.slice(5, 7) }, (_, i) => ({ label: MONTHS[i], sum: 0 })) : Array.from({ length: nDays }, (_, i) => { const d = addDays(w.from, i); return { label: key === 'week' ? new Date(d + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short' }) : String(+d.slice(8)), sum: 0, d }; });
+      inW.forEach((b) => { const i = key === 'year' ? +b.from.slice(5, 7) - 1 : daysBetween(w.from, b.from); if (buckets[i]) buckets[i].sum += b.rent; });
+      const max = Math.max(...buckets.map((x) => x.sum), 0), peakI = buckets.findIndex((x) => x.sum === max);
+      $('chart-title').textContent = w.title; $('chart-peak').textContent = max ? `Peak: ${buckets[peakI].label} · ${inr(max)}` : 'No revenue in this period';
+      $('chart').innerHTML = buckets.map((x, i) => `<div class="col ${max && i === peakI ? 'peak' : ''}" title="${esc(x.label)}: ${inr(x.sum)}"><span class="val">${x.sum >= 1000 ? Math.round(x.sum / 1000) + 'k' : x.sum || ''}</span><div class="bar" style="height:${max ? (x.sum / max) * 82 : 0}%"></div></div>`).join('');
+      $('chart-labels').innerHTML = buckets.map((x) => `<span>${esc(x.label)}</span>`).join('');
+
+      // payment modes (money received in the window)
+      const byMode = {}; PAYMENTS.filter((p) => p.type !== 'refund' && inRange(p.date, w.from, w.to)).forEach((p) => { byMode[p.mode] = (byMode[p.mode] || 0) + p.amount; });
+      const sumModes = Object.values(byMode).reduce((a, b) => a + b, 0), modes = Object.keys(MODES).map((k) => [MODES[k], sumModes ? Math.round((byMode[k] || 0) / sumModes * 100) : 0]);
+      let acc = 0; $('donut').style.background = sumModes ? `conic-gradient(${modes.map(([, p], i) => { const s = `${COLORS[i]} ${acc}% ${acc + p}%`; acc += p; return s; }).join(',')})` : 'var(--c-bg-subtle)';
+      $('legend').innerHTML = modes.map(([n, p], i) => `<li><i style="background:${COLORS[i]}"></i>${n}<b>${p}%</b></li>`).join('');
+
+      // top outfits
+      const per = OUTFITS.map((o) => { const bs = inW.filter((b) => b.outfit === o.id), days = bs.reduce((a, b) => { const s = b.from > w.from ? b.from : w.from, e = b.to < w.to ? b.to : w.to; return a + (e >= s ? daysBetween(s, e) + 1 : 0); }, 0); return { o, n: bs.length, rent: bs.reduce((a, b) => a + b.rent, 0), util: Math.min(100, Math.round(days / nDays * 100)) }; })
+        .filter((x) => x.n).sort((a, b) => b.rent - a.rent).slice(0, 7);
+      $('top').tBodies[0].innerHTML = per.map((x, i) => `<tr><td>${i + 1}</td><td><a href="outfit.html?id=${x.o.id}">${x.o.id}</a> ${esc(x.o.name)}</td><td>${esc(x.o.cat)}</td><td class="num">${x.n}</td><td class="num">${inr(x.rent)}</td><td class="num">${x.util}%</td></tr>`).join('') || '<tr><td colspan="6" class="muted">No bookings in this period.</td></tr>';
+
+      // category revenue
+      const cat = {}; inW.forEach((b) => { const o = RR.outfitById(b.outfit); const c = o ? o.cat : 'Other'; cat[c] = (cat[c] || 0) + b.rent; });
+      const cats = Object.entries(cat).sort((a, b) => b[1] - a[1]), cmax = cats.length ? cats[0][1] : 1;
+      $('cats').innerHTML = cats.map(([n, v]) => `<div class="hbar"><span>${esc(n)}</span><div class="track"><div class="fill" style="width:${v / cmax * 100}%"></div></div><span class="n">${inr(v)}</span></div>`).join('') || '<p class="muted" style="margin:0">Nothing yet.</p>';
+
+      // late list: overdue now + recent late returns
+      const lateRows = [...overdue.map((b) => ({ who: b.customer, what: `${(RR.outfitById(b.outfit) || {}).name || b.outfit} · ${b.lateDays} day${b.lateDays > 1 ? 's' : ''} overdue`, fee: b.lateFee, cls: 'red' })),
+        ...lateRet.slice(-3).reverse().map((r) => { const b = RR.bookingByNo(r.booking) || {}; return { who: b.customer || '', what: `${(RR.outfitById(b.outfit) || {}).name || ''} · returned late`, fee: r.lateFee, cls: 'orange' }; })].slice(0, 5);
+      $('late').innerHTML = lateRows.map((x) => `<div class="list-row"><div><strong>${esc(x.who)}</strong><br><span class="muted">${esc(x.what)}</span></div><span class="indicator ${x.cls}">${inr(x.fee)} fee</span></div>`).join('') || '<p class="muted" style="margin:0">No late returns.</p>';
+
+      // bridal salon: weddings whose wedding date falls in the period, money received in the period
+      const wds = RR.WEDDINGS.filter((x) => x.status !== 'cancelled' && inRange(x.date, w.from, w.to)), wp = RR.WEDDINGS.flatMap((x) => (x.status === 'cancelled' ? [] : x.payments)).filter((p) => inRange(p.date, w.from, w.to));
+      if ($('wd-kpis')) {
+        $('wd-kpis').innerHTML = [['Weddings', wds.length, 'by wedding date'], ['Package value', inr(wds.reduce((a, x) => a + x.total, 0)), 'after discounts'], ['Received', inr(wp.reduce((a, p) => a + p.amount, 0)), 'wedding payments in this period'], ['Still to collect', inr(wds.reduce((a, x) => a + x.balance, 0)), 'on these weddings']]
+          .map(([l, v, s]) => `<div class="card card-body stat"><div class="label">${l}</div><div class="value">${v}</div><div class="delta muted">${s}</div></div>`).join('');
+        const sold = {}; wds.forEach((x) => x.items.forEach((i) => { const k = i.desc; sold[k] = sold[k] || { n: 0, rev: 0 }; sold[k].n += i.qty; sold[k].rev += i.total; }));
+        $('wd-top').innerHTML = Object.entries(sold).sort((a, b) => b[1].rev - a[1].rev).slice(0, 6).map(([k, v]) => `<tr><td>${esc(k)}</td><td class="num">${v.n}</td><td class="num">${inr(v.rev)}</td></tr>`).join('') || '<tr><td colspan="3" class="muted">No weddings in this period.</td></tr>';
+      }
+      lastRows = inW.sort((a, b) => (a.from < b.from ? -1 : 1));
+    }
+    $('range').addEventListener('click', (e) => {
+      const b = e.target.closest('button'); if (!b) return;
+      $('range').querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', x === b)); render(b.dataset.range);
+    });
+    // CSV of every booking in the selected period (what an accountant asks for). Cells starting with = + - @ are neutralised so Excel never runs them as formulas.
+    $('csv').addEventListener('click', () => {
+      const cell = (v) => { let s = String(v == null ? '' : v); if (/^[=+\-@\t\r]/.test(s)) s = "'" + s; return '"' + s.replace(/"/g, '""') + '"'; };
+      const rows = [['Booking', 'Customer', 'Mobile', 'Piece', 'Outfit', 'Category', 'Pickup', 'Return', 'Status', 'Rent', 'Deposit']];
+      lastRows.forEach((b) => { const o = RR.outfitById(b.outfit) || {}; rows.push([b.id, b.customer, b.phone, b.outfit, o.name, o.cat, b.from, b.to, b.status, b.rent, b.deposit]); });
+      const url = URL.createObjectURL(new Blob(['﻿' + rows.map((r) => r.map(cell).join(',')).join('\n')], { type: 'text/csv' }));
+      const a = Object.assign(document.createElement('a'), { href: url, download: `bookings-${cur}-${RR.TODAY}.csv` }); document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+      toast(`${lastRows.length} bookings exported`);
+    });
+    render('week'); document.addEventListener('rr:data', () => render(cur));
+  });
+</script>
+<script src="js/app.js"></script>
+</body>
+</html>

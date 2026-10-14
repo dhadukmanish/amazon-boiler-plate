@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en" data-theme="light" data-density="comfortable">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27%3E%3Cpath d=%27M6 3h12l4 6-10 12L2 9Z%27 fill=%27%23ec7211%27/%3E%3C/svg%3E">
+  <title>Salon schedule · Pratishtha Bridal</title>
+  <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/tokens.css">
+  <link rel="stylesheet" href="css/layout.css">
+  <link rel="stylesheet" href="css/components.css">
+  <link rel="stylesheet" href="css/rental.css">
+</head>
+<body data-active="salon" data-perm="view_weddings">
+<div id="page">
+  <div class="page-header">
+    <div><h1>Salon schedule</h1><p>Which artist is at which function, day by day. Functions without an artist are highlighted.</p></div>
+    <div class="actions"><a class="btn" href="weddings.html"><i data-icon="heart"></i> All weddings</a></div>
+  </div>
+
+  <div class="cal-tools">
+    <select class="select" id="range" aria-label="Date range">
+      <option value="today">Today</option><option value="7" selected>Next 7 days</option><option value="14">Next 14 days</option><option value="30">Next 30 days</option><option value="60">Next 60 days</option><option value="month">This month</option><option value="past">Last 7 days</option>
+    </select>
+    <select class="select" id="who" aria-label="Artist"></select>
+    <label class="check"><span class="switch"><input type="checkbox" id="showdone"><span></span></span> Show finished functions</label>
+    <span id="range-text" class="muted" style="margin-left:auto"></span>
+  </div>
+
+  <section class="card"><div class="card-header"><h2>Artist workload</h2></div><div class="load-cards" id="load"></div></section>
+
+  <section class="card"><div id="agenda"></div></section>
+</div>
+
+<script src="js/config.js"></script>
+<script src="js/data.js"></script>
+<script src="js/api.js"></script>
+<script src="js/shell.js"></script>
+<script>
+  RR.ready.then(() => {
+    const { WEVENTS, ARTISTS, KINDS, fmt, esc, addDays } = RR, api = RR.api, $ = (x) => document.getElementById(x);
+    const mins = (e) => (e.start && e.end ? (+e.end.slice(0, 2) * 60 + +e.end.slice(3)) - (+e.start.slice(0, 2) * 60 + +e.start.slice(3)) : 0);
+    const win = () => { const t = RR.TODAY, v = $('range').value;
+      if (v === 'today') return [t, t]; if (v === 'past') return [addDays(t, -7), addDays(t, -1)];
+      if (v === 'month') { const y = +t.slice(0, 4), m = +t.slice(5, 7); return [`${y}-${String(m).padStart(2, '0')}-01`, RR.iso(new Date(y, m, 0))]; }
+      return [t, addDays(t, +v - 1)]; };
+    const fillArtists = () => { const cur = $('who').value; $('who').innerHTML = '<option value="all">All artists</option><option value="none">Not assigned</option>' + ARTISTS.map((a) => `<option value="${a.id}">${esc(a.name)} (${esc(a.skill)})</option>`).join(''); if ([...$('who').options].some((o) => o.value === cur)) $('who').value = cur; };
+
+    function render() {
+      const [from, to] = win(), who = $('who').value, done = $('showdone').checked;
+      $('range-text').textContent = from === to ? new Date(from + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' }) : `${fmt(from)} – ${fmt(to)}`;
+      const inWin = WEVENTS.filter((e) => e.weddingStatus !== 'cancelled' && e.date >= from && e.date <= to && (done || !e.done || $('range').value === 'past'));
+      const shown = inWin.filter((e) => who === 'all' || (who === 'none' ? !e.artist : e.artist === +who)).sort((a, b) => ((a.date + (a.start || '99')) < (b.date + (b.start || '99')) ? -1 : 1));
+
+      // workload per artist for the chosen dates
+      const loadFor = (list) => ({ n: list.length, h: Math.round(list.reduce((a, e) => a + mins(e), 0) / 6) / 10 });
+      const unassigned = loadFor(inWin.filter((e) => !e.artist));
+      $('load').innerHTML = ARTISTS.filter((a) => a.active || inWin.some((e) => e.artist === a.id)).map((a) => { const l = loadFor(inWin.filter((e) => e.artist === a.id));
+        return `<div class="load-card"><span class="who"><span class="avatar md c${a.id % 6}">${esc(a.name.split(' ').map((x) => x[0]).join('').slice(0, 2))}</span><span>${esc(a.name)}<small>${esc(a.skill)}${a.active ? '' : ' · inactive'}</small></span></span><strong>${l.n} function${l.n === 1 ? '' : 's'}</strong><span class="muted">${l.h} hours booked</span></div>`; }).join('')
+        + `<div class="load-card ${unassigned.n ? 'warn' : ''}"><span><strong style="font-size:var(--fs-md)">Not assigned</strong></span><strong>${unassigned.n} function${unassigned.n === 1 ? '' : 's'}</strong><span class="muted">${unassigned.n ? 'need an artist' : 'all covered'}</span></div>`;
+
+      // agenda grouped by date
+      let html = '', day = '';
+      shown.forEach((e) => {
+        if (e.date !== day) { day = e.date; const d = new Date(day + 'T00:00:00'); html += `<div class="agenda-day"><span>${d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}</span><span class="muted">${day === RR.TODAY ? 'Today' : ''}</span></div>`; }
+        html += `<div class="agenda-row k-${e.kind} ${e.artist ? '' : 'unassigned'}"><div class="time">${e.start ? e.start + (e.end ? '–' + e.end : '') : '<span class="muted">no time</span>'}</div>
+          <div><a href="wedding.html?id=${e.weddingId}"><strong>${esc(e.title)}</strong></a> <span class="indicator">${KINDS[e.kind] || e.kind}</span> ${e.done ? '<span class="indicator green">Done</span>' : ''}<br>
+            <span class="muted">${esc(e.weddingCode)} · ${esc(e.bride)}${e.venue ? ' · ' + esc(e.venue) : ''} · ${e.people} ${e.people === 1 ? 'person' : 'people'}</span></div>
+          <div>${e.artist ? `<span class="artist-chip"><span class="avatar c${e.artist % 6}">${esc(e.artistName.split(' ').map((x) => x[0]).join('').slice(0, 2))}</span>${esc(e.artistName)}</span>`
+            : (api.has('edit_weddings') ? `<button class="btn btn-sm btn-primary" data-assign="${e.id}">Assign artist</button>` : '<span class="artist-chip none">No artist</span>')}${e.artist && api.has('edit_weddings') && !e.done ? ` <button class="icon-mini" data-assign="${e.id}" aria-label="Change artist" title="Change artist"><i data-icon="edit"></i></button>` : ''}</div></div>`;
+      });
+      $('agenda').innerHTML = html || '<div class="card-body"><p class="muted" style="margin:0">No functions in this period.</p></div>';
+      hydrateIcons($('agenda'));
+    }
+
+    function assign(id) {
+      const e = WEVENTS.find((x) => x.id === +id); if (!e) return;
+      const m = RR.ui.modal({ title: `Assign artist · ${esc(e.title)}`, confirm: 'Save',
+        body: `<p style="margin:0 0 10px">${esc(e.weddingCode)} · ${esc(e.bride)}<br><span class="muted">${fmt(e.date)} · ${e.start ? e.start + '–' + (e.end || '') : 'time not set'} · ${e.people} ${e.people === 1 ? 'person' : 'people'}</span></p>
+          <div class="field"><label for="as-a">Artist</label><select id="as-a" class="select"><option value="">Not assigned</option>${ARTISTS.filter((a) => a.active || a.id === e.artist).map((a) => { const busy = RR.artistClash(a.id, e.date, e.start, e.end, e.id);
+            return `<option value="${a.id}" ${a.id === e.artist ? 'selected' : ''} ${busy ? 'disabled' : ''}>${esc(a.name)} (${esc(a.skill)})${busy ? ' · busy: ' + esc(busy.bride) : ''}</option>`; }).join('')}</select><span class="hint">Artists already booked at that time are greyed out.</span></div>`,
+        onConfirm: async (el) => { const v = el.querySelector('#as-a').value; await api.saveEvent({ ...e, wedding: e.weddingId, artist: v ? +v : null }); toast(v ? 'Artist assigned' : 'Artist removed'); } });
+      return m;
+    }
+    fillArtists(); render();
+    ['range', 'who', 'showdone'].forEach((k) => $(k).addEventListener('input', render));
+    $('agenda').addEventListener('click', (e) => { const b = e.target.closest('[data-assign]'); if (b) assign(b.dataset.assign); });
+    document.addEventListener('rr:data', () => { fillArtists(); render(); });
+  });
+</script>
+<script src="js/app.js"></script>
+</body>
+</html>

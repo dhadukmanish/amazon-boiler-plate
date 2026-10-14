@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en" data-theme="light" data-density="comfortable">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27%3E%3Cpath d=%27M6 3h12l4 6-10 12L2 9Z%27 fill=%27%23ec7211%27/%3E%3C/svg%3E">
+  <title>Outfit · Pratishtha Bridal</title>
+  <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/tokens.css">
+  <link rel="stylesheet" href="css/layout.css">
+  <link rel="stylesheet" href="css/components.css">
+  <link rel="stylesheet" href="css/rental.css">
+</head>
+<body data-active="inventory" data-perm="view_inventory">
+<div id="page">
+  <ol class="breadcrumbs"><li><a href="index.html">Home</a></li><li><a href="inventory.html">Inventory</a></li><li id="bc">–</li></ol>
+
+  <div class="doc-head">
+    <h1 id="title">–</h1>
+    <span class="indicator" id="status"></span>
+    <span class="spacer"></span>
+    <details class="menu">
+      <summary class="btn btn-sm">Actions <i data-icon="chevronDown"></i></summary>
+      <div class="menu-list" id="menu"></div>
+    </details>
+    <button class="btn btn-sm" id="edit" hidden>Edit</button>
+    <a class="btn btn-primary btn-sm" id="book" href="booking-new.html"><i data-icon="plus"></i> Book this outfit</a>
+  </div>
+
+  <div class="layout-2 outfit-layout">
+    <div class="card"><div class="photo-lg" id="photo"></div></div>
+    <div class="grid" style="gap:var(--s-4)">
+      <section class="card">
+        <div class="card-header"><h2>Details</h2></div>
+        <div class="card-body"><dl class="kv" id="kv" style="grid-template-columns:repeat(2,minmax(0,1fr))"></dl></div>
+      </section>
+      <section class="card">
+        <div class="card-header"><h2>Next 14 days</h2><span class="muted" id="avail-note"></span></div>
+        <div class="card-body"><div class="avail" id="avail"></div><div class="avail-legend"><span><i class="free"></i>Free</span><span><i class="busy"></i>Booked</span></div></div>
+      </section>
+    </div>
+  </div>
+
+  <section class="card" data-table>
+    <div class="card-header"><h2>Booking history <span class="pill" id="count">0</span></h2>
+      <div class="chips" data-chips data-for="#hist">
+        <button data-status="all" aria-pressed="true">All</button><button data-status="upcoming" aria-pressed="false">Upcoming</button>
+        <button data-status="out" aria-pressed="false">With customer</button><button data-status="overdue" aria-pressed="false">Overdue</button>
+        <button data-status="returned" aria-pressed="false">Returned</button></div></div>
+    <div class="table-wrap"><table class="table">
+      <thead id="hhead"></thead>
+      <tbody id="hist"></tbody></table></div>
+  </section>
+</div>
+<script src="js/config.js"></script>
+<script src="js/data.js"></script>
+<script src="js/api.js"></script>
+<script src="js/shell.js"></script>
+<script>
+  RR.ready.then(() => {
+    const { inr, fmt, STATUS, OUTFIT_STATUS, esc } = RR, $ = (x) => document.getElementById(x), api = RR.api;
+    const id = +(new URLSearchParams(location.search).get('id') || (RR.OUTFITS[0] && RR.OUTFITS[0].id));
+    if (!RR.outfitById(id)) { document.querySelector('.content-inner').innerHTML = `<div class="alert warning"><div><strong>Piece ${esc(id)} not found</strong>Check the number on the tag and try again. <a href="inventory.html">Back to inventory</a></div></div>`; return; }
+    const money = api.has('view_bookings');       // without "See bookings" there are no customers, rents or amounts
+    $('hhead').innerHTML = money ? '<tr><th data-sort>Booking</th><th data-sort>Customer</th><th>Mobile</th><th data-sort>Pickup</th><th data-sort>Return</th><th>Status</th><th class="num" data-sort>Rent</th></tr>'
+      : '<tr><th data-sort>Booking</th><th data-sort>Pickup</th><th data-sort>Return</th><th>Status</th></tr>';
+    const refresh = () => { $('edit').hidden = !api.has('manage_outfits'); $('book').hidden = !api.has('create_booking'); }; refresh(); document.addEventListener('rr:data', refresh);
+
+    function setStatus(status, label) {
+      document.querySelector('.menu[open]')?.removeAttribute('open');
+      RR.ui.modal({ title: `${label} · piece ${id}`, confirm: label, body: `<div class="field"><label for="ss-n">Note (optional)</label><input id="ss-n" class="input" placeholder="${status === 'repair' ? 'e.g. Torn dupatta' : 'e.g. Ready tomorrow'}"></div>`,
+        onConfirm: async (el) => { await api.setOutfitStatus(id, status, el.querySelector('#ss-n').value); window.toast(`Piece ${id}: ${label.toLowerCase()}`); } });
+    }
+
+    function render() {
+      const o = RR.outfitById(id); if (!o) return;
+      const hist = RR.bookingsOf(o.id), counted = hist.filter((b) => b.status === 'out' || b.status === 'overdue' || b.status === 'returned');
+      document.title = o.id + ' · ' + o.name + ' · Pratishtha Bridal';
+      $('bc').textContent = o.id; $('title').textContent = o.id + ' · ' + o.name;
+      const st = OUTFIT_STATUS[o.status]; $('status').className = 'indicator ' + (o.overdue ? 'red' : st.cls); $('status').textContent = o.overdue ? 'Overdue' : st.label;
+      $('book').href = 'booking-new.html?outfit=' + o.id;
+      const st8 = api.has('set_outfit_status');
+      $('menu').innerHTML = (api.has('print_tags') ? `<a href="tags.html?ids=${o.id}" target="_blank">Print tag (QR + barcode)</a>` : '') + (!st8 ? '' :
+        (o.status === 'cleaning' || o.status === 'repair' ? '<button data-st="available" data-l="Mark ready to rent">Mark ready to rent</button>' : '') +
+        (o.status === 'available' ? '<button data-st="cleaning" data-l="Send for cleaning">Send for cleaning</button><button data-st="repair" data-l="Send for repair">Send for repair</button>' : '') +
+        (o.status === 'cleaning' ? '<button data-st="repair" data-l="Send for repair">Send for repair</button>' : ''));
+      $('photo').innerHTML = RR.outfitPhoto(o);
+      $('kv').innerHTML = [
+        ['Piece number', '<strong class="mono">' + o.id + '</strong>'], ['Category', esc(o.cat)], ['Size', esc(o.size)], ['Rent per day', inr(o.rent)],
+        ['Security deposit', inr(o.dep)], ['Times rented', counted.length], ...(money ? [['Total rent earned', inr(counted.reduce((a, b) => a + b.rent, 0))]] : []), ['Current status', esc(o.note)],
+      ].map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('');
+      $('count').textContent = hist.length;
+      $('hist').innerHTML = hist.map((b) => { const s = STATUS[b.status];
+        return money
+          ? `<tr data-status="${b.status}"><td><a href="booking.html?id=${b.no}">${b.id}</a></td><td><a href="customer.html?id=${b.customerId}">${esc(b.customer)}</a></td><td>${esc(b.phone)}</td><td>${fmt(b.from)}</td><td>${fmt(b.to)}</td><td><span class="indicator ${s.cls}">${s.label}</span></td><td class="num">${inr(b.rent)}</td></tr>`
+          : `<tr data-status="${b.status}"><td>${b.id}</td><td>${fmt(b.from)}</td><td>${fmt(b.to)}</td><td><span class="indicator ${s.cls}">${s.label}</span></td></tr>`; }).join('') || '<tr><td colspan="7" class="muted">Never rented yet.</td></tr>';
+
+      // availability strip for the next 14 days from today
+      const [y, m, d0] = RR.TODAY.split('-').map(Number); let busyDays = 0;
+      $('avail').innerHTML = Array.from({ length: 14 }, (_, i) => {
+        const d = new Date(y, m - 1, d0 + i), iso = RR.iso(d);
+        const b = hist.find((x) => RR.LIVE(x) && iso >= x.from && iso <= x.to); if (b) busyDays++;
+        return `<div class="day ${b ? 'busy' : ''}" title="${b ? esc(b.id + (money ? ' · ' + b.customer : '')) : 'Free'}"><small>${d.toLocaleDateString('en-GB', { weekday: 'short' })}</small><b>${d.getDate()}</b></div>`;
+      }).join('');
+      $('avail-note').textContent = busyDays + ' of 14 days booked';
+      const c = document.querySelector('[data-chips]'); if (c && c._apply) c._apply();
+    }
+    render(); document.addEventListener('rr:data', render);
+    $('menu').addEventListener('click', (e) => { const b = e.target.closest('[data-st]'); if (b) setStatus(b.dataset.st, b.dataset.l); });
+    $('edit').addEventListener('click', () => RR.ui.outfitModal(RR.outfitById(id)));
+  });
+</script>
+<script src="js/app.js"></script>
+</body>
+</html>

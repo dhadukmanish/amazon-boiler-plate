@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en" data-theme="light" data-density="comfortable">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27%3E%3Cpath d=%27M6 3h12l4 6-10 12L2 9Z%27 fill=%27%23ec7211%27/%3E%3C/svg%3E">
+  <title>Customers · Pratishtha Bridal</title>
+  <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/tokens.css">
+  <link rel="stylesheet" href="css/layout.css">
+  <link rel="stylesheet" href="css/components.css">
+  <link rel="stylesheet" href="css/rental.css">
+</head>
+<body data-active="customers" data-perm="view_customers">
+<div id="page">
+  <div class="page-header">
+    <div><h1>Customers</h1><p>Everyone who has rented from you, with their balance and deposit at a glance.</p></div>
+    <div class="actions"><button class="btn btn-primary" id="add" data-perm="edit_customers"><i data-icon="plus"></i> Add customer</button></div>
+  </div>
+
+  <section class="grid cols-4" id="kpis"></section>
+
+  <section class="card" data-table>
+    <div class="toolbar">
+      <input class="input" data-filter placeholder="Search name or mobile number" aria-label="Search customers">
+      <div class="chips" data-chips data-for="#rows" id="chips">
+        <button data-status="all" aria-pressed="true">All</button>
+        <button data-status="active" aria-pressed="false">Has outfit now</button>
+        <button data-status="overdue" aria-pressed="false">Overdue</button>
+        <button data-status="due" aria-pressed="false">Balance due</button>
+        <button data-status="repeat" aria-pressed="false">Repeat</button>
+        <button data-status="vip" aria-pressed="false">VIP</button>
+      </div>
+    </div>
+    <div class="table-wrap"><table class="table">
+      <thead><tr><th data-sort>Customer</th><th>Mobile</th><th class="num" data-sort>Bookings</th><th class="num" data-sort>Total spent</th><th class="num" data-sort>Deposit held</th><th class="num" data-sort>Balance due</th><th data-sort>Last booking</th><th>Tags</th><th>Action</th></tr></thead>
+      <tbody id="rows"></tbody></table></div>
+    <div class="card-footer"><span class="muted" id="foot"></span></div>
+  </section>
+</div>
+
+<script src="js/config.js"></script>
+<script src="js/data.js"></script>
+<script src="js/api.js"></script>
+<script src="js/shell.js"></script>
+<script>
+  RR.ready.then(() => {
+    const { CUSTOMERS, inr, fmt, STATUS, esc } = RR, $ = (id) => document.getElementById(id), chips = $('chips');
+    const tagCls = { Repeat: 'blue', New: '', VIP: 'orange', Overdue: 'red' };
+    const FLAGS = (c) => [c.hasOut && 'active', c.hasLate && 'overdue', c.due > 0 && 'due', c.bookings.length > 1 && 'repeat', c.tags.includes('VIP') && 'vip'].filter(Boolean);
+
+    function render() {
+      const list = [...CUSTOMERS].sort((a, b) => ((b.last ? b.last.from : '') > (a.last ? a.last.from : '') ? 1 : -1));
+      const total = CUSTOMERS.reduce((a, c) => ({ out: a.out + (c.hasOut ? 1 : 0), due: a.due + c.due, rep: a.rep + (c.bookings.length > 1 ? 1 : 0) }), { out: 0, due: 0, rep: 0 });
+      $('kpis').innerHTML = [
+        ['Total customers', CUSTOMERS.length, 'on record'], ['Repeat customers', total.rep, (CUSTOMERS.length ? Math.round(total.rep / CUSTOMERS.length * 100) : 0) + '% come back'],
+        ['Have an outfit now', total.out, 'pickup or overdue'], ['Balance due', inr(total.due), 'late fees + pending balance'],
+      ].map(([l, v, s]) => `<div class="card card-body stat"><div class="label">${l}</div><div class="value">${v}</div><div class="delta muted">${s}</div></div>`).join('');
+
+      $('rows').innerHTML = list.map((c) => {
+        const wa = `https://wa.me/91${c.phone.replace(/\D/g, '')}`;
+        return `<tr class="click" data-status="${FLAGS(c).join(' ')}" data-href="customer.html?id=${c.id}">
+          <td><div class="who"><span class="avatar md c${c.id % 6}">${esc(c.initials)}</span><div><a href="customer.html?id=${c.id}"><strong>${esc(c.name)}</strong></a><small>ID ${c.id} · ${esc(c.city)}</small></div></div></td>
+          <td>${esc(c.phone)}</td><td class="num">${c.bookings.length}</td><td class="num">${inr(c.spent)}</td><td class="num">${c.deposit ? inr(c.deposit) : '—'}</td>
+          <td class="num" style="${c.due ? 'color:var(--c-danger);font-weight:700' : ''}">${c.due ? inr(c.due) : '—'}</td>
+          <td>${c.last ? `${c.last.id}<br><span class="muted">${fmt(c.last.from)} · <span class="indicator ${STATUS[c.last.status].cls}">${STATUS[c.last.status].label}</span></span>` : '<span class="muted">No bookings yet</span>'}</td>
+          <td>${c.tags.map((t) => `<span class="indicator ${tagCls[t]}">${t}</span>`).join(' ')}</td>
+          <td><a class="btn btn-wa btn-sm" target="_blank" rel="noopener" href="${wa}">WhatsApp</a></td></tr>`;
+      }).join('') || '<tr><td colspan="9" class="muted">No customers yet. Add one, or they are created with their first booking.</td></tr>';
+      const cnt = (f) => CUSTOMERS.filter((c) => FLAGS(c).includes(f)).length;
+      chips.querySelectorAll('button').forEach((x) => { const s = x.dataset.status; x.innerHTML = `${x.textContent.replace(/\s*\d+$/, '')}<span class="count">${s === 'all' ? CUSTOMERS.length : cnt(s)}</span>`; });
+      $('foot').textContent = list.length + ' customer' + (list.length === 1 ? '' : 's');
+      if (chips._apply) chips._apply();
+    }
+    render(); document.addEventListener('rr:data', render);
+    $('rows').addEventListener('click', (e) => { const tr = e.target.closest('tr'); if (tr && tr.dataset.href && !e.target.closest('a,button')) location.href = tr.dataset.href; });
+
+    $('add').addEventListener('click', () => RR.ui.modal({ title: 'Add customer', confirm: 'Save customer',
+      body: `<div class="form-grid"><div class="field"><label for="cn">Full name</label><input id="cn" class="input"></div>
+        <div class="field"><label for="cp">WhatsApp number</label><input id="cp" class="input" inputmode="tel" placeholder="98250 11122"></div>
+        <div class="field"><label for="cc">City</label><input id="cc" class="input" value="Surat"></div>
+        <div class="field"><label for="ci">ID proof</label><select id="ci" class="select"><option>Aadhaar</option><option>Driving licence</option><option>Voter ID</option></select></div>
+        <div class="field" style="grid-column:1/-1"><label for="cm">Notes (optional)</label><textarea id="cm" class="textarea" placeholder="Size, preferences, reference…"></textarea></div></div>`,
+      onConfirm: async (el) => {
+        const v = (id) => el.querySelector('#' + id).value;
+        const id = await RR.api.addCustomer({ name: v('cn'), phone: v('cp'), city: v('cc'), idProof: v('ci'), notes: v('cm') });
+        window.toast('Customer saved'); location.href = 'customer.html?id=' + id;
+      } }));
+  });
+</script>
+<script src="js/app.js"></script>
+</body>
+</html>

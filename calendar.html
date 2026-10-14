@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en" data-theme="light" data-density="comfortable">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27%3E%3Cpath d=%27M6 3h12l4 6-10 12L2 9Z%27 fill=%27%23ec7211%27/%3E%3C/svg%3E">
+  <title>Calendar · Pratishtha Bridal</title>
+  <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/tokens.css">
+  <link rel="stylesheet" href="css/layout.css">
+  <link rel="stylesheet" href="css/components.css">
+  <link rel="stylesheet" href="css/rental.css">
+</head>
+<body data-active="calendar" data-perm="view_calendar">
+<div id="page">
+  <div class="page-header">
+    <div><h1>Calendar</h1><p class="hint-line" id="hint"></p></div>
+    <div class="actions"><a class="btn btn-primary" id="newbk" href="booking-new.html" hidden><i data-icon="plus"></i> New booking</a></div>
+  </div>
+
+  <div class="cal-tools">
+    <button class="icon-sq" id="prev" aria-label="Previous month"><i data-icon="chevronLeft"></i></button>
+    <span class="month" id="month">–</span>
+    <button class="icon-sq" id="next" aria-label="Next month"><i data-icon="chevronRight"></i></button>
+    <button class="btn btn-sm" id="today">Today</button>
+    <div class="seg" id="views" role="group" aria-label="View">
+      <button data-view="timeline" aria-pressed="true"><i data-icon="rows"></i> Timeline</button>
+      <button data-view="month" aria-pressed="false"><i data-icon="calendar"></i> Month</button>
+    </div>
+    <select class="select" id="cat" aria-label="Category"><option value="all">All categories</option></select>
+    <span class="spacer" style="flex:1"></span>
+    <div class="cal-legend"><span><i class="s-up"></i>Upcoming</span><span><i class="s-out"></i>With customer</span><span><i class="s-late"></i>Overdue</span><span><i class="s-done"></i>Returned</span></div>
+  </div>
+
+  <!-- TIMELINE: one row per piece, one column per day -->
+  <section class="card" id="v-timeline"><div class="tcal" id="tcal"></div></section>
+
+  <!-- MONTH -->
+  <section class="layout-2" id="v-month" hidden>
+    <div class="card"><div class="mcal" id="mcal"></div></div>
+    <aside class="card summary" id="daypanel"></aside>
+  </section>
+</div>
+
+<div class="selbar" id="selbar" hidden>
+  <span id="seltext"></span>
+  <button class="btn btn-sm" id="selclear">Clear</button>
+  <a class="btn btn-primary btn-sm" id="selgo" href="booking-new.html">Create booking</a>
+</div>
+
+<script src="js/config.js"></script>
+<script src="js/data.js"></script>
+<script src="js/api.js"></script>
+<script src="js/shell.js"></script>
+<script>
+  RR.ready.then(() => {
+    const { OUTFITS, BOOKINGS, STATUS, inr, fmt, range, esc } = RR, $ = (id) => document.getElementById(id), api = RR.api;
+    const TODAY = RR.TODAY, money = api.has('view_bookings'), canBook = api.has('create_booking');          // without "See bookings" only availability shows, no customers
+    const pad = (n) => String(n).padStart(2, '0');
+    const isoOf = (y, m, d) => `${y}-${pad(m + 1)}-${pad(d)}`;
+    const daysIn = (y, m) => new Date(y, m + 1, 0).getDate();
+    const CLS = { upcoming: 's-up', out: 's-out', overdue: 's-late', returned: 's-done' };
+    const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    const WD = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+    let view = 'timeline', Y = +TODAY.slice(0, 4), M = +TODAY.slice(5, 7) - 1, cat = 'all', sel = null, drag = false, picked = TODAY;
+    $('newbk').hidden = !canBook;
+
+    const fillCats = () => { const cur = $('cat').value; $('cat').innerHTML = '<option value="all">All categories</option>' + [...new Set(OUTFITS.map((o) => o.cat))].map((c) => `<option>${esc(c)}</option>`).join(''); $('cat').value = [...$('cat').options].some((o) => o.value === cur) ? cur : 'all'; };
+    const outs = () => [...OUTFITS].sort((a, b) => a.id - b.id).filter((o) => cat === 'all' || o.cat === cat);
+    const label = (b) => (money ? b.customer : b.id);
+
+    /* ---------------- Timeline ---------------- */
+    function renderTimeline() {
+      const n = daysIn(Y, M), first = isoOf(Y, M, 1), last = isoOf(Y, M, n);
+      let html = `<div class="trow thead" style="--n:${n}"><div class="lab">Piece</div>` +
+        Array.from({ length: n }, (_, i) => { const d = i + 1, w = new Date(Y, M, d).getDay(), iso = isoOf(Y, M, d);
+          return `<div class="dh ${w % 6 === 0 ? 'wk' : ''} ${iso === TODAY ? 'today' : ''}" style="grid-column:${d + 1}"><small>${WD[w]}</small><b>${d}</b></div>`; }).join('') + '</div>';
+      outs().forEach((o) => {
+        html += `<div class="trow" style="--n:${n}"><div class="lab"><span class="mini">${RR.outfitPhoto(o)}</span><span><a href="outfit.html?id=${o.id}"><b>${o.id}</b></a> ${esc(o.name)}${o.status === 'repair' ? ' · <em>repair</em>' : o.status === 'cleaning' ? ' · <em>cleaning</em>' : ''}</span></div>`;
+        for (let d = 1; d <= n; d++) {
+          const iso = isoOf(Y, M, d), w = new Date(Y, M, d).getDay();
+          html += `<div class="cell ${w % 6 === 0 ? 'wk' : ''} ${iso === TODAY ? 'today' : ''} ${iso < TODAY || !canBook ? 'past' : ''} ${o.status === 'repair' ? 'blocked' : ''}" style="grid-column:${d + 1}" data-o="${o.id}" data-d="${iso}"></div>`;
+        }
+        RR.bookingsOf(o.id).filter((b) => b.status !== 'cancelled' && b.from <= last && b.to >= first).forEach((b) => {
+          const s = b.from < first ? 1 : +b.from.slice(8), e = b.to > last ? n : +b.to.slice(8);
+          html += `<button class="bar ${CLS[b.status]}" style="grid-column:${s + 1} / ${e + 2}" data-b="${b.no}" title="${esc(b.id + ' · ' + (money ? b.customer + ' · ' : '') + range(b) + ' · ' + STATUS[b.status].label)}">${esc(label(b))}</button>`;
+        });
+        html += '</div>';
+      });
+      $('tcal').innerHTML = html || '';
+      paintSel();
+    }
+
+    /* Selection: drag across free days in one row, or click start day then end day (counter staff only) */
+    function paintSel() {
+      document.querySelectorAll('.cell.sel').forEach((c) => c.classList.remove('sel', 'bad'));
+      const bar = $('selbar');
+      if (!sel || !canBook) { bar.hidden = true; return; }
+      const a = sel.a <= sel.b ? sel.a : sel.b, b = sel.a <= sel.b ? sel.b : sel.a, o = RR.outfitById(sel.o), bad = RR.clash(sel.o, a, b);
+      document.querySelectorAll(`.cell[data-o="${sel.o}"]`).forEach((c) => { if (c.dataset.d >= a && c.dataset.d <= b) { c.classList.add('sel'); if (bad) c.classList.add('bad'); } });
+      const days = RR.daysBetween(a, b) + 1;
+      $('seltext').innerHTML = bad
+        ? `<strong>${o.id} · ${esc(o.name)}</strong> — <span class="bad">already booked ${range(bad)} (${bad.id}); the day after a return is for cleaning. Pick other days.</span>`
+        : `<strong>${o.id} · ${esc(o.name)}</strong> · ${fmt(a)}${a === b ? '' : ' – ' + fmt(b)} · ${days} day${days > 1 ? 's' : ''} · ${inr(days * o.rent)}`;
+      const go = $('selgo'); go.href = `booking-new.html?outfit=${o.id}&from=${a}&to=${b}`;
+      go.setAttribute('aria-disabled', !!bad); go.style.pointerEvents = bad ? 'none' : ''; go.style.opacity = bad ? .4 : '';
+      bar.hidden = false;
+    }
+    const cellOf = (e) => e.target.closest('.cell');
+    const ok = (c) => c && canBook && !c.classList.contains('past') && !c.classList.contains('blocked');
+    $('tcal').addEventListener('pointerdown', (e) => {
+      const c = cellOf(e); if (!ok(c)) return;
+      if (sel && sel.o === +c.dataset.o && sel.a === sel.b && c.dataset.d > sel.a) { sel.b = c.dataset.d; paintSel(); return; }   // second click extends
+      sel = { o: +c.dataset.o, a: c.dataset.d, b: c.dataset.d }; drag = true; paintSel();
+    });
+    $('tcal').addEventListener('pointerover', (e) => {
+      if (!drag) return; const c = cellOf(e);
+      if (c && +c.dataset.o === sel.o && c.dataset.d >= sel.a) { sel.b = c.dataset.d; paintSel(); }
+    });
+    document.addEventListener('pointerup', () => { drag = false; });
+    $('tcal').addEventListener('click', (e) => { const b = e.target.closest('.bar'); if (b && money) location.href = 'booking.html?id=' + b.dataset.b; });
+    $('selclear').addEventListener('click', () => { sel = null; paintSel(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && sel) { sel = null; paintSel(); } });
+
+    /* ---------------- Month view ---------------- */
+    function bookingsOn(iso) {
+      const ids = new Set(outs().map((o) => o.id));
+      return BOOKINGS.filter((b) => b.status !== 'cancelled' && ids.has(b.outfit) && iso >= b.from && iso <= b.to);
+    }
+    function renderMonth() {
+      const start = new Date(Y, M, 1).getDay();
+      let html = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d) => `<div class="wd">${d}</div>`).join('');
+      for (let i = 0; i < 42; i++) {
+        const d = new Date(Y, M, 1 - start + i), iso = isoOf(d.getFullYear(), d.getMonth(), d.getDate()), list = bookingsOn(iso);
+        html += `<button class="mday ${d.getMonth() !== M ? 'other' : ''} ${iso === TODAY ? 'today' : ''} ${iso === picked ? 'picked' : ''}" data-d="${iso}"><span class="dn">${d.getDate()}</span>` +
+          list.slice(0, 3).map((b) => `<span class="chip ${CLS[b.status]}" data-b="${b.no}">${b.outfit} ${esc(money ? b.customer.split(' ')[0] : '')}</span>`).join('') +
+          (list.length > 3 ? `<span class="more">+${list.length - 3} more</span>` : '') + '</button>';
+      }
+      $('mcal').innerHTML = html;
+      renderDay();
+    }
+    function renderDay() {
+      const list = bookingsOn(picked), free = OUTFITS.filter((o) => o.status !== 'repair' && !RR.bookingsOf(o.id).some((b) => RR.LIVE(b) && picked >= b.from && picked <= b.to)).length;
+      const row = (b, tag) => { const o = RR.outfitById(b.outfit) || { id: b.outfit, name: '' };
+        return `<div class="list-row"><div>${money ? `<a href="booking.html?id=${b.no}"><strong>${b.id}</strong></a> · ${esc(b.customer)}` : `<strong>${b.id}</strong>`}<br><span class="muted">${o.id} ${esc(o.name)} · ${range(b)}</span></div><span class="indicator ${STATUS[b.status].cls}">${tag || STATUS[b.status].label}</span></div>`; };
+      const pick = list.filter((b) => b.from === picked), ret = list.filter((b) => b.to === picked && b.from !== picked), mid = list.filter((b) => b.from !== picked && b.to !== picked);
+      const sec = (t, a, tag) => a.length ? `<h3 style="font-size:var(--fs-md);margin:var(--s-3) 0 0" class="muted">${t} (${a.length})</h3>${a.map((b) => row(b, tag)).join('')}` : '';
+      $('daypanel').innerHTML = `<div class="card-header"><h2>${new Date(picked + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}</h2></div>
+        <div class="card-body"><div class="summary-row"><span class="muted">Free pieces this day</span><strong>${free} of ${OUTFITS.length}</strong></div>
+        ${sec('Pickups', pick, 'Pickup')}${sec('Returns', ret, 'Return')}${sec('With customer', mid)}
+        ${list.length ? '' : '<p class="muted">No bookings on this day.</p>'}</div>
+        ${canBook ? `<div class="card-footer"><a class="btn btn-primary" style="width:100%" href="booking-new.html?from=${picked >= TODAY ? picked : TODAY}&to=${picked >= TODAY ? picked : TODAY}"><i data-icon="plus"></i> New booking on this day</a></div>` : ''}`;
+      hydrateIcons($('daypanel'));
+    }
+    $('mcal').addEventListener('click', (e) => {
+      const chip = e.target.closest('.chip'); if (chip && money) { location.href = 'booking.html?id=' + chip.dataset.b; return; }
+      const day = e.target.closest('.mday'); if (!day) return;
+      picked = day.dataset.d; const p = new Date(picked + 'T00:00:00');
+      if (p.getMonth() !== M) { Y = p.getFullYear(); M = p.getMonth(); }
+      render();
+    });
+
+    /* ---------------- Shell ---------------- */
+    function render() {
+      $('month').textContent = `${MONTHS[M]} ${Y}`;
+      $('v-timeline').hidden = view !== 'timeline'; $('v-month').hidden = view !== 'month';
+      $('hint').textContent = view === 'timeline' ? (canBook ? 'Drag across free days on a piece (or click start day, then end day) to start a booking.' : 'Availability of every piece, day by day.') : 'Click a day to see pickups, returns and free pieces.';
+      if (view === 'timeline') renderTimeline(); else { sel = null; paintSel(); renderMonth(); }
+    }
+    const shift = (d) => { const x = new Date(Y, M + d, 1); Y = x.getFullYear(); M = x.getMonth(); sel = null; render(); };
+    $('prev').onclick = () => shift(-1); $('next').onclick = () => shift(1);
+    $('today').onclick = () => { Y = +TODAY.slice(0, 4); M = +TODAY.slice(5, 7) - 1; picked = TODAY; render(); const t = document.querySelector('.dh.today'); if (t) t.scrollIntoView({ inline: 'center', block: 'nearest' }); };
+    $('cat').onchange = (e) => { cat = e.target.value; sel = null; render(); };
+    $('views').addEventListener('click', (e) => {
+      const b = e.target.closest('button'); if (!b) return; view = b.dataset.view;
+      $('views').querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', x === b)); render();
+    });
+    fillCats(); render();
+    document.addEventListener('rr:data', () => { fillCats(); render(); });
+  });
+</script>
+<script src="js/app.js"></script>
+</body>
+</html>

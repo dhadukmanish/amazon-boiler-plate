@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="en" data-theme="light" data-density="comfortable">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27%3E%3Cpath d=%27M6 3h12l4 6-10 12L2 9Z%27 fill=%27%23ec7211%27/%3E%3C/svg%3E">
+  <title>Wedding · Pratishtha Bridal</title>
+  <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/tokens.css">
+  <link rel="stylesheet" href="css/layout.css">
+  <link rel="stylesheet" href="css/components.css">
+  <link rel="stylesheet" href="css/rental.css">
+</head>
+<body data-active="weddings" data-perm="view_weddings">
+<div id="page">
+  <ol class="breadcrumbs"><li><a href="index.html">Home</a></li><li><a href="weddings.html">Weddings</a></li><li id="bc">–</li></ol>
+
+  <div class="doc-head">
+    <h1 id="title">–</h1>
+    <span class="indicator" id="status"></span>
+    <span class="wd-pill" id="when"></span>
+    <span class="spacer"></span>
+    <details class="menu">
+      <summary class="btn btn-sm">Actions <i data-icon="chevronDown"></i></summary>
+      <div class="menu-list" id="menu"></div>
+    </details>
+    <button class="btn btn-primary btn-sm" id="take-pay" hidden><i data-icon="banknote"></i> Take payment</button>
+  </div>
+
+  <div class="layout-2" id="main">
+    <div class="grid" style="gap:var(--s-4)">
+      <section class="card" id="stepsCard"></section>
+
+      <section class="card">
+        <div class="card-header"><h2>Functions <span class="pill" id="fn-count">0</span></h2><button class="btn btn-sm" id="add-fn" hidden><i data-icon="plus"></i> Add function</button></div>
+        <div class="card-body" id="fns"></div>
+      </section>
+
+      <section class="card">
+        <div class="card-header"><h2>Salon services and package</h2><button class="btn btn-sm" id="add-item" hidden><i data-icon="plus"></i> Add service</button></div>
+        <div class="table-wrap"><table class="table"><thead><tr><th>Service</th><th>For function</th><th class="num">Qty</th><th class="num">Price</th><th class="num">Total</th><th></th></tr></thead><tbody id="items"></tbody></table></div>
+        <div class="card-body" id="pkg" style="max-width:420px;margin-left:auto"></div>
+      </section>
+
+      <section class="card">
+        <div class="card-header"><h2>Rented outfits</h2><a class="btn btn-sm" id="book-outfit" hidden href="booking-new.html"><i data-icon="plus"></i> Book an outfit for this wedding</a></div>
+        <div class="card-body" id="rentals"></div>
+      </section>
+
+      <section class="card">
+        <div class="card-header"><h2>Checklist <span class="pill" id="task-count">0</span></h2></div>
+        <div class="card-body">
+          <div id="tasks"></div>
+          <form id="task-form" class="actions" style="margin-top:12px;flex-wrap:nowrap" hidden>
+            <input class="input" id="task-title" placeholder="Add a to-do, e.g. Confirm jewellery set" aria-label="New to-do">
+            <input class="input" id="task-due" type="date" aria-label="Due date" style="max-width:160px">
+            <button class="btn btn-sm" type="submit">Add</button>
+          </form>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-header"><h2>Notes</h2></div>
+        <div class="card-body"><textarea class="textarea" id="note" placeholder="Skin type, allergies, look references, family details…"></textarea>
+          <div style="margin-top:8px"><button class="btn btn-sm" id="save-note" hidden>Save notes</button></div></div>
+      </section>
+    </div>
+
+    <aside class="grid" style="gap:var(--s-4)">
+      <section class="card"><div class="card-header"><h2>Money</h2></div><div class="card-body" id="money"></div><div id="pays"></div></section>
+      <section class="card"><div class="card-header"><h2>Bride</h2></div><div class="card-body" id="bride"></div></section>
+    </aside>
+  </div>
+</div>
+
+<script src="js/config.js"></script>
+<script src="js/data.js"></script>
+<script src="js/api.js"></script>
+<script src="js/shell.js"></script>
+<script>
+  RR.ready.then(() => {
+    const { inr, fmt, esc, WSTATUS, KINDS } = RR, api = RR.api, $ = (x) => document.getElementById(x);
+    const id = +new URLSearchParams(location.search).get('id') || (RR.WEDDINGS[0] && RR.WEDDINGS[0].id);
+    if (!RR.weddingById(id)) { document.querySelector('.content-inner').innerHTML = '<div class="alert warning"><div><strong>Wedding not found</strong><a href="weddings.html">Back to weddings</a></div></div>'; return; }
+    const W = () => RR.weddingById(id), MODE = { cash: 'Cash', upi: 'UPI', card: 'Card', bank: 'Bank' };
+    const can = () => ({ edit: api.has('edit_weddings'), pay: api.has('wedding_payments'), bookings: api.has('view_bookings'), book: api.has('create_booking'), cust: api.has('view_customers') });
+    const when = (w) => (w.daysLeft === 0 ? 'today' : w.daysLeft > 0 ? `in ${w.daysLeft} day${w.daysLeft === 1 ? '' : 's'}` : `${-w.daysLeft} days ago`);
+    const time = (e) => (e.start ? e.start + (e.end ? '–' + e.end : '') : 'time not set');
+    const act = async (fn, ok) => { try { const r = await fn(); if (ok) toast(ok); return r; } catch (e) { toast(e.message); throw e; } };
+    let noteDirty = false;
+
+    function render() {
+      const w = W(); if (!w) return; const c = can(), st = WSTATUS[w.status], today = RR.TODAY;
+      document.title = `${w.code} · ${w.bride} · ${RR.SETTINGS.shopName}`; $('bc').textContent = w.code; $('title').textContent = `${w.code} · ${w.bride}`;
+      $('status').className = 'indicator ' + st.cls; $('status').textContent = st.label;
+      $('when').textContent = when(w); $('when').className = 'wd-pill' + (w.daysLeft < 0 ? ' past' : w.daysLeft <= 7 && (w.status === 'enquiry' || w.status === 'confirmed') ? ' soon' : '');
+      $('take-pay').hidden = !(c.pay && w.status !== 'cancelled');
+      $('add-fn').hidden = !c.edit; $('add-item').hidden = !c.edit; $('task-form').hidden = !c.edit; $('save-note').hidden = !c.edit; $('note').readOnly = !c.edit;
+      $('book-outfit').hidden = !c.book; $('book-outfit').href = `booking-new.html?wedding=${w.id}&name=${encodeURIComponent(w.bride)}&phone=${encodeURIComponent(w.phone)}`;
+
+      // actions menu
+      const wa = `https://wa.me/91${w.phone.replace(/\D/g, '')}?text=${encodeURIComponent(`Hi ${w.bride}, your wedding booking ${w.code} with ${RR.SETTINGS.shopName}: package ${inr(w.total)}, paid ${inr(w.paid)}, balance ${inr(w.balance)}. Thank you!`)}`;
+      $('menu').innerHTML = `<a href="slip.html?type=wedding&id=${w.id}" target="_blank">Print quotation / invoice</a><a href="${wa}" target="_blank" rel="noopener">WhatsApp the bride</a>` + (c.edit ? '<button data-edit-details>Edit details</button>' +
+        (w.status !== 'confirmed' ? '<button data-set="confirmed">Mark as confirmed</button>' : '') + (w.status !== 'completed' ? '<button data-set="completed">Mark as completed</button>' : '') +
+        (w.status !== 'enquiry' ? '<button data-set="enquiry">Back to enquiry</button>' : '') + (w.status !== 'cancelled' ? '<button class="danger" data-set="cancelled">Cancel this wedding</button>' : '') : '');
+
+      // steps
+      $('stepsCard').innerHTML = w.status === 'cancelled' ? '<div class="card-body"><div class="alert warning"><div><strong>This wedding was cancelled</strong>Artists are free again for its functions.</div></div></div>'
+        : '<ol class="steps">' + [['Enquiry', 'enquiry'], ['Confirmed', 'confirmed'], ['Completed', 'completed']].map(([l, k], i) => { const idx = ['enquiry', 'confirmed', 'completed'].indexOf(w.status);
+          return `<li class="${i < idx || (w.status === 'completed') ? 'done' : i === idx ? 'current' : ''}"><span class="dot">${i < idx || w.status === 'completed' ? '<i data-icon="check"></i>' : i + 1}</span>${l}</li>`; }).join('') + '</ol>';
+
+      // functions
+      $('fn-count').textContent = w.events.length;
+      $('fns').innerHTML = w.events.map((e) => { const d = new Date(e.date + 'T00:00:00'), over = e.date < today && !e.done;
+        return `<div class="fn k-${e.kind} ${e.done ? 'done' : ''}"><div class="date"><b>${d.getDate()}</b><small>${d.toLocaleDateString('en-GB', { month: 'short' })}</small></div>
+          <div><div class="title"><strong>${esc(e.title)}</strong> <span class="indicator">${KINDS[e.kind] || e.kind}</span> ${over ? '<span class="indicator red">not marked done</span>' : ''}</div>
+            <div class="meta"><span>${d.toLocaleDateString('en-GB', { weekday: 'short' })} · ${time(e)}</span>${e.venue ? `<span>${esc(e.venue)}</span>` : ''}<span>${e.people} ${e.people === 1 ? 'person' : 'people'}</span>
+              ${e.artist ? `<span class="artist-chip"><span class="avatar c${e.artist % 6}">${esc(e.artistName.split(' ').map((x) => x[0]).join('').slice(0, 2))}</span>${esc(e.artistName)}</span>` : '<span class="artist-chip none">No artist assigned</span>'}</div>
+            ${e.notes ? `<div class="meta"><em>${esc(e.notes)}</em></div>` : ''}</div>
+          <div class="acts">${c.edit ? `<label class="check" title="Mark as done"><span class="switch"><input type="checkbox" data-ev-done="${e.id}" ${e.done ? 'checked' : ''}><span></span></span></label><button class="icon-mini" data-ev-edit="${e.id}" aria-label="Edit"><i data-icon="edit"></i></button><button class="icon-mini" data-ev-del="${e.id}" aria-label="Delete"><i data-icon="trash"></i></button>` : ''}</div></div>`; }).join('')
+        || '<p class="muted" style="margin:0">No functions yet. Add the trial, mehendi, haldi, wedding day… each with its date, time and artist.</p>';
+
+      // services / package
+      const evTitle = new Map(w.events.map((e) => [e.id, e.title]));
+      $('items').innerHTML = w.items.map((i) => `<tr><td>${esc(i.desc)}</td><td>${i.event ? esc(evTitle.get(i.event) || '') : '<span class="muted">—</span>'}</td><td class="num">${i.qty}</td><td class="num">${inr(i.price)}</td><td class="num">${inr(i.total)}</td>
+        <td>${c.edit ? `<button class="icon-mini" data-it-edit="${i.id}" aria-label="Edit"><i data-icon="edit"></i></button><button class="icon-mini" data-it-del="${i.id}" aria-label="Remove"><i data-icon="trash"></i></button>` : ''}</td></tr>`).join('') || '<tr><td colspan="6" class="muted">No services added yet.</td></tr>';
+      $('pkg').innerHTML = `<div class="summary-row"><span class="muted">Services total</span><strong>${inr(w.servicesTotal)}</strong></div>
+        <div class="summary-row"><span class="muted">Discount</span>${c.edit ? `<span><input class="input" id="discount" type="number" min="0" value="${w.discount}" style="width:110px;text-align:right" aria-label="Discount"></span>` : `<strong>${inr(w.discount)}</strong>`}</div>
+        <div class="summary-row total"><span>Package total</span><span>${inr(w.total)}</span></div>`;
+
+      // rentals
+      $('rentals').innerHTML = !c.bookings ? '<p class="muted" style="margin:0">Rented outfits are only visible to people who can see bookings.</p>'
+        : w.rentals.map((b) => { const o = RR.outfitById(b.outfit) || { id: b.outfit, name: '' };
+          return `<div class="list-row"><div class="who"><span class="mini-photo">${RR.outfitPhoto(o)}</span><div><a href="booking.html?id=${b.no}"><strong>${b.id}</strong></a> · <a href="outfit.html?id=${o.id}">${o.id} ${esc(o.name)}</a><small>${RR.range(b)} · rent ${inr(b.rent)}${b.due ? ` · <strong style="color:var(--c-warning)">${inr(b.due)} due</strong>` : ' · paid'}</small></div></div><span class="indicator ${RR.STATUS[b.status].cls}">${RR.STATUS[b.status].label}</span></div>`; }).join('')
+          || '<p class="muted" style="margin:0">No outfit rented for this wedding yet. Book the bridal lehenga, haldi or sangeet outfits here so everything stays together.</p>';
+
+      // checklist
+      $('task-count').textContent = `${w.tasksDone}/${w.tasksTotal}`;
+      $('tasks').innerHTML = w.tasks.map((t) => { const late = !t.done && t.due && t.due < today;
+        return `<div class="task ${t.done ? 'done' : ''}"><input type="checkbox" data-task-done="${t.id}" ${t.done ? 'checked' : ''} ${c.edit ? '' : 'disabled'} aria-label="Done"><span class="t">${esc(t.title)}</span>
+          ${t.due ? `<span class="due ${late ? 'late' : ''}">${late ? 'overdue · ' : ''}${fmt(t.due)}</span>` : ''}${c.edit ? `<button class="icon-mini" data-task-del="${t.id}" aria-label="Delete"><i data-icon="trash"></i></button>` : ''}</div>`; }).join('') || '<p class="muted" style="margin:0">Nothing on the checklist.</p>';
+      if (!noteDirty) $('note').value = w.notes || '';
+
+      // money
+      const dueAll = w.balance + w.rentalDue;
+      $('money').innerHTML = `<h3 style="font-size:var(--fs-sm)" class="muted">Salon</h3>
+        <div class="summary-row"><span class="muted">Package total</span><strong>${inr(w.total)}</strong></div><div class="summary-row"><span class="muted">Received</span><strong>${inr(w.paid)}</strong></div>
+        <div class="summary-row total"><span>Salon balance</span><span style="color:${w.balance ? 'var(--c-warning)' : 'var(--c-success)'}">${w.balance ? inr(w.balance) : 'Paid'}</span></div>
+        ${w.rentals.length && c.bookings ? `<h3 style="font-size:var(--fs-sm);margin-top:14px" class="muted">Rented outfits</h3><div class="summary-row"><span class="muted">Rent (${w.rentals.length})</span><strong>${inr(w.rentalRent)}</strong></div><div class="summary-row"><span class="muted">Still to pay</span><strong>${inr(w.rentalDue)}</strong></div>` : ''}
+        ${w.status !== 'cancelled' ? `<div class="summary-row big" style="margin-top:10px"><span>Total to collect</span><strong>${inr(dueAll)}</strong></div>` : ''}`;
+      $('pays').innerHTML = w.payments.length ? '<div class="table-wrap"><table class="table"><thead><tr><th>Date</th><th>How</th><th class="num">Amount</th></tr></thead><tbody>' +
+        w.payments.map((p) => `<tr><td>${fmt(p.date)}</td><td>${MODE[p.mode]}${p.note ? `<br><span class="muted">${esc(p.note)}</span>` : ''}</td><td class="num">${inr(p.amount)}</td></tr>`).join('') + '</tbody></table></div>' : '<p class="muted" style="padding:0 var(--card-pad) var(--card-pad);margin:0">No payments yet.</p>';
+
+      // bride
+      $('bride').innerHTML = `<div class="who"><span class="avatar md c${w.id % 6}">${esc(w.initials)}</span><div><strong>${c.cust ? `<a href="customer.html?id=${w.customerId}">${esc(w.bride)}</a>` : esc(w.bride)}</strong><small>${esc(w.phone)}</small></div></div>
+        <dl class="kv" style="grid-template-columns:1fr 1fr;margin-top:12px"><div><dt>Wedding date</dt><dd>${fmt(w.date)} ${w.date.slice(0, 4)}</dd></div><div><dt>Groom</dt><dd>${esc(w.groom) || '—'}</dd></div>
+        <div><dt>Venue</dt><dd>${esc(w.venue) || '—'}</dd></div><div><dt>City</dt><dd>${esc(w.city) || '—'}</dd></div></dl>
+        <div class="actions" style="margin-top:12px"><a class="btn btn-wa btn-sm" target="_blank" rel="noopener" href="https://wa.me/91${w.phone.replace(/\D/g, '')}">WhatsApp</a><a class="btn btn-sm" href="tel:${w.phone.replace(/\D/g, '')}">Call</a></div>`;
+      hydrateIcons(document.querySelector('.content-inner'));
+    }
+    render(); document.addEventListener('rr:data', render);
+
+    /* ---------------- modals ---------------- */
+    function eventModal(ev) {
+      const w = W(), edit = !!(ev && ev.id), e0 = ev || { kind: 'other', title: '', date: w.date, start: '', end: '', venue: w.venue, artist: null, people: 1, notes: '' };
+      const arts = RR.ARTISTS.filter((a) => a.active || a.id === e0.artist);
+      const m = RR.ui.modal({ title: edit ? 'Edit function' : 'Add a function', confirm: edit ? 'Save changes' : 'Add function',
+        body: `<div class="form-grid">
+          <div class="field"><label for="e-k">Type</label><select id="e-k" class="select">${Object.entries(KINDS).map(([k, l]) => `<option value="${k}" ${k === e0.kind ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+          <div class="field"><label for="e-t">Name</label><input id="e-t" class="input" value="${esc(e0.title)}" placeholder="e.g. Mehendi"></div>
+          <div class="field"><label for="e-d">Date</label><input id="e-d" class="input" type="date" value="${e0.date}"></div>
+          <div class="field"><label for="e-p">People to be done</label><input id="e-p" class="input" type="number" min="1" value="${e0.people}"></div>
+          <div class="field"><label for="e-s">Starts</label><input id="e-s" class="input" type="time" value="${e0.start || ''}"></div>
+          <div class="field"><label for="e-e">Ends</label><input id="e-e" class="input" type="time" value="${e0.end || ''}"></div>
+          <div class="field"><label for="e-v">Venue</label><input id="e-v" class="input" value="${esc(e0.venue)}"></div>
+          <div class="field"><label for="e-a">Artist</label><select id="e-a" class="select"><option value="">Not assigned yet</option>${arts.map((a) => `<option value="${a.id}" ${a.id === e0.artist ? 'selected' : ''}>${esc(a.name)} (${esc(a.skill)})</option>`).join('')}</select></div>
+          <div id="e-warn" style="grid-column:1/-1" hidden></div>
+          <div class="field" style="grid-column:1/-1"><label for="e-n">Notes (optional)</label><input id="e-n" class="input" value="${esc(e0.notes)}" placeholder="e.g. Bring the airbrush kit"></div></div>`,
+        onConfirm: async (el) => {
+          const v = (k) => el.querySelector('#' + k).value;
+          await api.saveEvent({ id: edit ? ev.id : undefined, wedding: w.id, kind: v('e-k'), title: v('e-t'), date: v('e-d'), start: v('e-s') || null, end: v('e-e') || null, venue: v('e-v'), artist: v('e-a') ? +v('e-a') : null, people: +v('e-p') || 1, notes: v('e-n'), done: edit ? ev.done : false });
+          toast(edit ? 'Function updated' : 'Function added');
+        } });
+      const q = (k) => m.el.querySelector('#' + k), ok = m.el.querySelector('[data-ok]');
+      let autoTitle = !e0.title;
+      q('e-k').addEventListener('change', () => { if (autoTitle || !q('e-t').value.trim()) { q('e-t').value = KINDS[q('e-k').value]; autoTitle = true; } if (q('e-k').value === 'wedding' && !edit) q('e-d').value = w.date; check(); });
+      q('e-t').addEventListener('input', () => { autoTitle = false; });
+      const check = () => {
+        const warn = q('e-warn'), a = +q('e-a').value || null, d = q('e-d').value, s = q('e-s').value, en = q('e-e').value;
+        const clash = RR.artistClash(a, d, s, en, edit ? ev.id : undefined); let bad = false, html = '', cls = 'warning';
+        if (s && en && en <= s) { bad = true; cls = 'danger'; html = '<strong>Check the time</strong>The function must end after it starts.'; }
+        else if (clash) { bad = true; cls = 'danger'; html = `<strong>${esc(RR.artistById(a).name)} is busy then</strong>Already at <a href="wedding.html?id=${clash.weddingId}">${esc(clash.weddingCode)} ${esc(clash.bride)}</a>: ${esc(clash.title)}, ${clash.start}–${clash.end}. Pick another time or artist.`; }
+        else if (a && (!s || !en)) { html = '<strong>Add start and end time</strong>So the app can make sure this artist is free.'; }
+        warn.hidden = !html; warn.className = 'alert ' + cls; warn.innerHTML = `<div>${html}</div>`; ok.disabled = bad;
+      };
+      ['e-a', 'e-d', 'e-s', 'e-e'].forEach((k) => q(k).addEventListener('input', check)); check();
+    }
+
+    function itemModal(it) {
+      const w = W(), edit = !!(it && it.id), i0 = it || { desc: '', qty: 1, price: '', event: null, service: null };
+      const cats = [...new Set(RR.SERVICES.filter((x) => x.active).map((x) => x.category))];
+      const m = RR.ui.modal({ title: edit ? 'Edit service' : 'Add a service', confirm: edit ? 'Save changes' : 'Add service',
+        body: `<div class="form-grid">
+          <div class="field" style="grid-column:1/-1"><label for="i-s">From the price list</label><select id="i-s" class="select"><option value="">Custom service</option>${cats.map((c) => `<optgroup label="${esc(c)}">${RR.SERVICES.filter((x) => x.active && x.category === c).map((x) => `<option value="${x.id}" ${x.id === i0.service ? 'selected' : ''}>${esc(x.name)} · ${inr(x.price)}</option>`).join('')}</optgroup>`).join('')}</select></div>
+          <div class="field" style="grid-column:1/-1"><label for="i-d">Description</label><input id="i-d" class="input" value="${esc(i0.desc)}" placeholder="e.g. HD Bridal Makeup"></div>
+          <div class="field"><label for="i-q">Quantity</label><input id="i-q" class="input" type="number" min="1" value="${i0.qty}"></div>
+          <div class="field"><label for="i-p">Price each (₹)</label><input id="i-p" class="input" type="number" min="0" value="${i0.price}"></div>
+          <div class="field" style="grid-column:1/-1"><label for="i-e">For which function (optional)</label><select id="i-e" class="select"><option value="">Not tied to a function</option>${w.events.map((e) => `<option value="${e.id}" ${e.id === i0.event ? 'selected' : ''}>${esc(e.title)} · ${fmt(e.date)}</option>`).join('')}</select></div></div>`,
+        onConfirm: async (el) => {
+          const v = (k) => el.querySelector('#' + k).value;
+          await api.saveItem({ id: edit ? it.id : undefined, wedding: w.id, event: v('i-e') ? +v('i-e') : null, service: v('i-s') ? +v('i-s') : null, desc: v('i-d'), qty: +v('i-q'), price: +v('i-p') });
+          toast(edit ? 'Service updated' : 'Service added');
+        } });
+      m.el.querySelector('#i-s').addEventListener('change', (e) => { const x = RR.SERVICES.find((s) => s.id === +e.target.value); if (x) { m.el.querySelector('#i-d').value = x.name; m.el.querySelector('#i-p').value = x.price; } });
+    }
+
+    const payModal = () => { const w = W();
+      RR.ui.modal({ title: `Take payment · ${w.code}`, confirm: 'Save payment',
+        body: `<p style="margin:0 0 10px">Salon balance: <strong>${inr(w.balance)}</strong></p><div class="form-grid"><div class="field"><label for="p-a">Amount (₹)</label><input id="p-a" class="input" type="number" min="1" value="${w.balance || ''}"></div>
+          <div class="field"><label for="p-m">Mode</label><select id="p-m" class="select"><option value="cash">Cash</option><option value="upi">UPI</option><option value="card">Card</option><option value="bank">Bank transfer</option></select></div>
+          <div class="field" style="grid-column:1/-1"><label for="p-n">Note (optional)</label><input id="p-n" class="input" placeholder="e.g. Advance / second instalment"></div></div>`,
+        onConfirm: async (el) => { const v = (k) => el.querySelector('#' + k).value; await api.addWeddingPayment({ wedding: w.id, amount: +v('p-a'), mode: v('p-m'), note: v('p-n') }); toast('Payment recorded'); } }); };
+
+    const detailsModal = () => { const w = W();
+      RR.ui.modal({ title: 'Edit wedding details', confirm: 'Save changes',
+        body: `<div class="form-grid"><div class="field"><label for="d-g">Groom's name</label><input id="d-g" class="input" value="${esc(w.groom)}"></div><div class="field"><label for="d-d">Wedding date</label><input id="d-d" class="input" type="date" value="${w.date}"></div>
+          <div class="field"><label for="d-v">Venue</label><input id="d-v" class="input" value="${esc(w.venue)}"></div><div class="field"><label for="d-c">City</label><input id="d-c" class="input" value="${esc(w.city)}"></div></div>`,
+        onConfirm: async (el) => { const v = (k) => el.querySelector('#' + k).value; if (!v('d-d')) throw new Error('Choose the wedding date.'); await api.updateWedding(w.id, { groom: v('d-g'), date: v('d-d'), venue: v('d-v'), city: v('d-c') }); toast('Details saved'); } }); };
+
+    const setStatus = (status) => { const w = W(), L = { confirmed: 'Mark as confirmed', completed: 'Mark as completed', enquiry: 'Back to enquiry', cancelled: 'Cancel this wedding' }[status];
+      document.querySelector('.menu[open]')?.removeAttribute('open');
+      RR.ui.modal({ title: L + '?', confirm: L, danger: status === 'cancelled', body: status === 'cancelled' ? '<p style="margin:0">The functions stay on record but the artists become free for those times. Money already received is not refunded automatically.</p>' : `<p style="margin:0">${esc(w.bride)}'s wedding will be marked <strong>${esc(WSTATUS[status].label)}</strong>.</p>`,
+        onConfirm: async () => { await api.setWeddingStatus(w.id, status); toast('Status updated'); } }); };
+
+    /* ---------------- events ---------------- */
+    document.addEventListener('click', (e) => {
+      const t = (sel) => e.target.closest(sel);
+      if (t('#add-fn')) eventModal();
+      else if (t('[data-ev-edit]')) eventModal(W().events.find((x) => x.id === +t('[data-ev-edit]').dataset.evEdit));
+      else if (t('[data-ev-del]')) { const ev = W().events.find((x) => x.id === +t('[data-ev-del]').dataset.evDel); RR.ui.modal({ title: 'Delete this function?', confirm: 'Delete', danger: true, body: `<p style="margin:0">${esc(ev.title)} on ${fmt(ev.date)} will be removed. Services sold for it stay on the package.</p>`, onConfirm: async () => { await api.deleteEvent(ev.id); toast('Function deleted'); } }); }
+      else if (t('#add-item')) itemModal();
+      else if (t('[data-it-edit]')) itemModal(W().items.find((x) => x.id === +t('[data-it-edit]').dataset.itEdit));
+      else if (t('[data-it-del]')) act(() => api.deleteItem(+t('[data-it-del]').dataset.itDel), 'Service removed');
+      else if (t('[data-task-del]')) act(() => api.deleteTask(+t('[data-task-del]').dataset.taskDel));
+      else if (t('#take-pay')) payModal();
+      else if (t('[data-edit-details]')) { document.querySelector('.menu[open]')?.removeAttribute('open'); detailsModal(); }
+      else if (t('[data-set]')) setStatus(t('[data-set]').dataset.set);
+    });
+    document.addEventListener('change', (e) => {
+      if (e.target.matches('[data-ev-done]')) { const ev = W().events.find((x) => x.id === +e.target.dataset.evDone); act(() => api.saveEvent({ ...ev, wedding: ev.wedding, done: e.target.checked })); }
+      else if (e.target.matches('[data-task-done]')) act(() => api.setTaskDone(+e.target.dataset.taskDone, e.target.checked));
+      else if (e.target.id === 'discount') act(() => api.updateWedding(id, { discount: +e.target.value || 0 }), 'Discount saved');
+    });
+    $('task-form').addEventListener('submit', async (e) => { e.preventDefault(); const t = $('task-title').value.trim(); if (!t) return; await act(() => api.saveTask({ wedding: id, title: t, due: $('task-due').value || null })); $('task-title').value = ''; $('task-due').value = ''; });
+    $('note').addEventListener('input', () => { noteDirty = true; });
+    $('save-note').addEventListener('click', async () => { await act(() => api.updateWedding(id, { notes: $('note').value }), 'Notes saved'); noteDirty = false; });
+  });
+</script>
+<script src="js/app.js"></script>
+</body>
+</html>

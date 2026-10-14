@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en" data-theme="light" data-density="comfortable">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27%3E%3Cpath d=%27M6 3h12l4 6-10 12L2 9Z%27 fill=%27%23ec7211%27/%3E%3C/svg%3E">
+  <title>Inventory · Pratishtha Bridal</title>
+  <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/tokens.css">
+  <link rel="stylesheet" href="css/layout.css">
+  <link rel="stylesheet" href="css/components.css">
+  <link rel="stylesheet" href="css/rental.css">
+</head>
+<body data-active="inventory" data-perm="view_inventory">
+<div id="page">
+  <ol class="breadcrumbs"><li><a href="index.html">Home</a></li><li>Inventory</li></ol>
+  <div class="page-header">
+    <div><h1>Inventory</h1><p>Every outfit with its live status.</p></div>
+    <div class="actions"><a class="btn" href="tags.html"><i data-icon="qr"></i> Print tags</a><button class="btn" id="add" hidden><i data-icon="plus"></i> Add outfit</button></div>
+  </div>
+
+  <section class="grid cols-4" id="kpis"></section>
+
+  <section class="card">
+    <div class="toolbar">
+      <input class="input" id="q" placeholder="Search by piece number or name (e.g. 1014)" aria-label="Search outfits">
+      <div class="chips" data-chips data-for="#grid" id="chips">
+        <button data-status="all" aria-pressed="true">All</button>
+        <button data-status="available" aria-pressed="false">Available</button>
+        <button data-status="rented" aria-pressed="false">Rented</button>
+        <button data-status="cleaning" aria-pressed="false">Cleaning</button>
+        <button data-status="repair" aria-pressed="false">Repair</button>
+      </div>
+    </div>
+    <div class="outfit-grid" id="grid" style="display:grid"></div>
+  </section>
+</div>
+
+<script src="js/config.js"></script>
+<script src="js/data.js"></script>
+<script src="js/api.js"></script>
+<script src="js/shell.js"></script>
+<script>
+  RR.ready.then(() => {
+    const { OUTFITS, OUTFIT_STATUS, inr, esc } = RR, $ = (id) => document.getElementById(id), grid = $('grid'), chips = $('chips'), api = RR.api;
+    $('add').hidden = !api.has('manage_outfits');
+    const canBook = api.has('create_booking'), seeBookings = api.has('view_bookings'), canReady = api.has('set_outfit_status');
+    const action = (o) => o.overdue ? '<span class="indicator red">Overdue</span>'
+      : o.status === 'available' ? (canBook ? `<a class="btn btn-sm" href="booking-new.html?outfit=${o.id}">Book</a>` : '')
+      : o.status === 'rented' ? (canBook ? `<a class="btn btn-sm" href="booking-new.html?outfit=${o.id}">Book later</a>` : '')
+      : (canReady ? `<button class="btn btn-sm" data-ready="${o.id}">Mark ready</button>` : '');
+
+    function render() {
+      const sorted = [...OUTFITS].sort((a, b) => a.id - b.id);
+      grid.innerHTML = sorted.map((o) => {
+        const st = OUTFIT_STATUS[o.status], n = RR.bookingsOf(o.id).filter((b) => b.status !== 'cancelled').length;
+        return `<article class="outfit-card" data-status="${o.status}" data-search="${esc((o.id + ' ' + o.name + ' ' + o.cat).toLowerCase())}">
+          <a class="photo" href="outfit.html?id=${o.id}" aria-label="Open ${esc(o.name)}">${RR.outfitPhoto(o)}<span class="tag">${o.id} · ${esc(o.size)}</span></a>
+          <div class="body"><h3><a href="outfit.html?id=${o.id}">${esc(o.name)}</a></h3><div class="price">${inr(o.rent)} <small>/ day</small></div>
+            <span class="muted">${esc(o.note)}</span>${seeBookings ? `<span class="muted">${n} booking${n === 1 ? '' : 's'}</span>` : ''}</div>
+          <div class="foot"><span class="indicator ${o.overdue ? 'red' : st.cls}">${o.overdue ? 'Overdue' : st.label}</span>${action(o)}</div></article>`;
+      }).join('') || '<p class="muted" style="padding:var(--s-4)">No outfits yet. Use “Add outfit”.</p>';
+      const c = (s) => OUTFITS.filter((o) => o.status === s).length;
+      $('kpis').innerHTML = [['Total outfits', OUTFITS.length, ''], ['Available now', c('available'), 'color:var(--c-success)'], ['Rented out', c('rented'), ''], ['Cleaning / Repair', c('cleaning') + c('repair'), 'color:var(--c-warning)']]
+        .map(([l, v, st]) => `<div class="card card-body stat"><div class="label">${l}</div><div class="value" style="${st}">${v}</div></div>`).join('');
+      chips.querySelectorAll('button').forEach((x) => { const s = x.dataset.status; x.innerHTML = `${x.textContent.replace(/\s*\d+$/, '')}<span class="count">${s === 'all' ? OUTFITS.length : c(s)}</span>`; });
+      if (chips._apply) chips._apply(); applySearch();
+    }
+    function applySearch() {
+      const q = $('q').value.trim().replace(/^#/, '').toLowerCase();
+      [...grid.children].forEach((c) => { c.dataset.hq = q && !(c.dataset.search || '').includes(q) ? '1' : ''; c.hidden = c.dataset.hc === '1' || c.dataset.hq === '1'; });
+    }
+    render(); document.addEventListener('rr:data', render);
+    $('q').addEventListener('input', applySearch);
+    chips.addEventListener('click', () => setTimeout(applySearch, 0));
+    grid.addEventListener('click', async (e) => { const b = e.target.closest('[data-ready]'); if (!b) return;
+      try { await api.setOutfitStatus(b.dataset.ready, 'available', ''); window.toast(`Piece ${b.dataset.ready} is ready to rent`); } catch (err) { window.toast(err.message); } });
+    $('add').addEventListener('click', () => RR.ui.outfitModal(null, (id) => { $('q').value = ''; }));
+  });
+</script>
+<script src="js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en" data-theme="light" data-density="comfortable">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27%3E%3Cpath d=%27M6 3h12l4 6-10 12L2 9Z%27 fill=%27%23ec7211%27/%3E%3C/svg%3E">
+  <title>Customer · Pratishtha Bridal</title>
+  <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/tokens.css">
+  <link rel="stylesheet" href="css/layout.css">
+  <link rel="stylesheet" href="css/components.css">
+  <link rel="stylesheet" href="css/rental.css">
+</head>
+<body data-active="customers" data-perm="view_customers">
+<div id="page">
+  <ol class="breadcrumbs"><li><a href="index.html">Home</a></li><li><a href="customers.html">Customers</a></li><li id="bc">–</li></ol>
+
+  <div class="doc-head">
+    <span class="avatar md" id="av"></span>
+    <h1 id="title">–</h1>
+    <span id="tags" style="display:flex;gap:6px"></span>
+    <span class="spacer"></span>
+    <details class="menu">
+      <summary class="btn btn-sm">Actions <i data-icon="chevronDown"></i></summary>
+      <div class="menu-list">
+        <a href="#" id="stmt" target="_blank" rel="noopener">Send statement on WhatsApp</a>
+        <button id="edit">Edit details</button>
+      </div>
+    </details>
+    <a class="btn btn-wa btn-sm" id="wa" target="_blank" rel="noopener" href="#"><i data-icon="chat"></i> WhatsApp</a>
+    <a class="btn btn-primary btn-sm" id="book" data-perm="create_booking" href="booking-new.html"><i data-icon="plus"></i> New booking</a>
+  </div>
+
+  <section class="grid cols-4" id="kpis"></section>
+
+  <div class="layout-2">
+    <div class="card" data-table>
+      <div data-tabs class="tabs" role="tablist" style="padding:0 var(--card-pad)">
+        <button class="tab" role="tab" aria-selected="true" data-panel="t-book">Bookings</button>
+        <button class="tab" role="tab" aria-selected="false" data-panel="t-pieces">Pieces rented</button>
+        <button class="tab" role="tab" aria-selected="false" data-panel="t-pay">Payments</button>
+      </div>
+      <section class="tab-panel" id="t-book"><div class="table-wrap"><table class="table">
+        <thead><tr><th data-sort>Booking</th><th>Piece</th><th data-sort>Pickup</th><th data-sort>Return</th><th>Status</th><th class="num" data-sort>Rent</th></tr></thead>
+        <tbody id="bk"></tbody></table></div></section>
+      <section class="card-body tab-panel" id="t-pieces" hidden><div class="piece-grid" id="pieces"></div></section>
+      <section class="tab-panel" id="t-pay" hidden><div class="table-wrap"><table class="table">
+        <thead><tr><th>Date</th><th>Booking</th><th>Type</th><th>Mode</th><th class="num">Amount</th></tr></thead>
+        <tbody id="pay"></tbody></table></div></section>
+    </div>
+
+    <aside class="grid" style="gap:var(--s-4)">
+      <section class="card"><div class="card-header"><h2>Contact</h2></div><div class="card-body">
+        <dl class="kv" id="contact" style="grid-template-columns:1fr 1fr"></dl></div></section>
+      <section class="card"><div class="card-header"><h2>Money</h2></div><div class="card-body" id="money"></div></section>
+      <section class="card" id="wd-card" hidden><div class="card-header"><h2>Weddings</h2></div><div class="card-body" id="wd-list"></div></section>
+      <section class="card"><div class="card-header"><h2>Notes</h2></div><div class="card-body">
+        <textarea class="textarea" placeholder="Add a note about this customer…" id="note"></textarea>
+        <div style="margin-top:8px"><button class="btn btn-sm" id="savenote">Save note</button></div></div></section>
+    </aside>
+  </div>
+</div>
+
+<script src="js/config.js"></script>
+<script src="js/data.js"></script>
+<script src="js/api.js"></script>
+<script src="js/shell.js"></script>
+<script>
+  RR.ready.then(() => {
+    const { inr, fmt, STATUS, esc } = RR, $ = (x) => document.getElementById(x);
+    const id = +new URLSearchParams(location.search).get('id') || (RR.CUSTOMERS[0] && RR.CUSTOMERS[0].id);
+    if (!RR.customerById(id)) { document.querySelector('.content-inner').innerHTML = '<div class="alert warning"><div><strong>Customer not found</strong><a href="customers.html">Back to customers</a></div></div>'; return; }
+    const tagCls = { Repeat: 'blue', New: '', VIP: 'orange', Overdue: 'red' };
+    const TYPE = { advance: 'Advance', deposit: 'Deposit', balance: 'Balance', late_fee: 'Late fee', damage: 'Damage', refund: 'Refund' }, MODE = { cash: 'Cash', upi: 'UPI', card: 'Card', bank: 'Bank' };
+    let noteDirty = false;
+
+    function render() {
+      const c = RR.customerById(id); if (!c) return;
+      const canEdit = RR.api.has('edit_customers'); $('edit').hidden = !canEdit; $('savenote').hidden = !canEdit; $('note').readOnly = !canEdit;
+      document.title = c.name + ' · Pratishtha Bridal';
+      $('bc').textContent = c.name; $('title').textContent = c.name;
+      $('av').textContent = c.initials; $('av').className = 'avatar md c' + (c.id % 6);
+      $('tags').innerHTML = c.tags.map((t) => `<span class="indicator ${tagCls[t]}">${t}</span>`).join('');
+      const digits = c.phone.replace(/\D/g, '');
+      $('wa').href = 'https://wa.me/91' + digits;
+      $('stmt').href = `https://wa.me/91${digits}?text=${encodeURIComponent(`Hi ${c.name}, your account with ${RR.SETTINGS.shopName}: bookings ${c.bookings.length}, total rent ${inr(c.spent)}${c.due ? `, amount due ${inr(c.due)}` : ', nothing due'}. Thank you!`)}`;
+      $('book').href = `booking-new.html?name=${encodeURIComponent(c.name)}&phone=${encodeURIComponent(c.phone)}`;
+
+      $('kpis').innerHTML = [
+        ['Total bookings', c.bookings.length, 'since ' + fmt(c.since)], ['Total spent', inr(c.spent), 'rent paid so far'],
+        ['Deposit held', inr(c.deposit), c.deposit ? 'refund on safe return' : 'nothing held'], ['Balance due', inr(c.due), c.due ? 'collect at pickup / late fee' : 'all clear'],
+      ].map(([l, v, s], i) => `<div class="card card-body stat"><div class="label">${l}</div><div class="value" style="${i === 3 && c.due ? 'color:var(--c-danger)' : ''}">${v}</div><div class="delta muted">${s}</div></div>`).join('');
+
+      $('bk').innerHTML = c.bookings.map((b) => { const o = RR.outfitById(b.outfit) || { id: b.outfit, name: '', cat: '' };
+        return `<tr><td><a href="booking.html?id=${b.no}">${b.id}</a></td>
+          <td><div class="who"><span class="mini-photo">${RR.outfitPhoto(o)}</span><div><a href="outfit.html?id=${o.id}"><strong>${o.id}</strong> ${esc(o.name)}</a><small>${esc(o.cat)}</small></div></div></td>
+          <td>${fmt(b.from)}</td><td>${fmt(b.to)}</td><td><span class="indicator ${STATUS[b.status].cls}">${b.status === 'overdue' ? 'Overdue ' + b.lateDays + 'd' : STATUS[b.status].label}</span></td><td class="num">${inr(b.rent)}</td></tr>`; }).join('') || '<tr><td colspan="6" class="muted">No bookings yet.</td></tr>';
+
+      const seen = new Map(); c.bookings.filter((b) => b.status !== 'cancelled').forEach((b) => seen.set(b.outfit, (seen.get(b.outfit) || 0) + 1));
+      $('pieces').innerHTML = [...seen].map(([pid, n]) => { const o = RR.outfitById(pid); if (!o) return '';
+        return `<a href="outfit.html?id=${pid}"><div class="ph">${RR.outfitPhoto(o)}</div><div class="cap"><strong>${o.id} · ${esc(o.name)}</strong><small>${n === 1 ? 'Rented once' : 'Rented ' + n + ' times'}</small></div></a>`; }).join('') || '<p class="muted">No pieces rented yet.</p>';
+
+      const nos = new Set(c.bookings.map((b) => b.no));
+      $('pay').innerHTML = RR.PAYMENTS.filter((p) => nos.has(p.booking)).map((p) =>
+        `<tr><td>${fmt(p.date)}</td><td><a href="booking.html?id=${p.booking}">${p.bookingId}</a></td><td>${TYPE[p.type]}</td><td>${MODE[p.mode]}</td><td class="num">${p.type === 'refund' ? '− ' : ''}${inr(p.amount)}</td></tr>`).join('') || '<tr><td colspan="5" class="muted">No payments yet.</td></tr>';
+
+      $('contact').innerHTML = [['Customer ID', '<span class="mono">' + c.id + '</span>'], ['Mobile', esc(c.phone)], ['City', esc(c.city) || '—'], ['ID proof', esc(c.idProof) + ' ✓'], ['Customer since', fmt(c.since)], ['Last booking', c.last ? c.last.id : '—']]
+        .map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('');
+      $('money').innerHTML = `<div class="summary-row"><span class="muted">Total rent paid</span><strong>${inr(c.spent)}</strong></div>
+        <div class="summary-row"><span class="muted">Deposit held by shop</span><strong>${inr(c.deposit)}</strong></div>
+        <div class="summary-row total"><span>Balance due</span><span style="color:${c.due ? 'var(--c-danger)' : 'inherit'}">${inr(c.due)}</span></div>
+        ${c.due && RR.api.has('view_payments') ? '<a class="btn btn-primary" style="width:100%;margin-top:12px" href="payments.html?status=pending">Collect payment</a>' : ''}`;
+      const wds = (c.weddings || []); $('wd-card').hidden = !wds.length || !RR.api.has('view_weddings');
+      $('wd-list').innerHTML = wds.map((w) => `<div class="list-row"><div><a href="wedding.html?id=${w.id}"><strong>${w.code}</strong></a><br><span class="muted">${fmt(w.date)} · ${esc(w.venue || w.city || '')}</span></div><span class="indicator ${RR.WSTATUS[w.status].cls}">${RR.WSTATUS[w.status].label}</span></div>`).join('');
+      if (!noteDirty) $('note').value = c.notes || '';
+    }
+    render(); document.addEventListener('rr:data', render);
+    $('note').addEventListener('input', () => { noteDirty = true; });
+    $('savenote').addEventListener('click', async () => {
+      const c = RR.customerById(id);
+      try { await RR.api.updateCustomer({ id, name: c.name, city: c.city, idProof: c.idProof, notes: $('note').value }); noteDirty = false; window.toast('Note saved'); } catch (e) { window.toast(e.message); }
+    });
+    $('edit').addEventListener('click', () => { document.querySelector('.menu[open]')?.removeAttribute('open'); const c = RR.customerById(id);
+      RR.ui.modal({ title: 'Edit customer', confirm: 'Save changes',
+        body: `<div class="form-grid"><div class="field"><label for="en">Full name</label><input id="en" class="input" value="${esc(c.name)}"></div>
+          <div class="field"><label for="ep">Mobile (cannot be changed)</label><input id="ep" class="input" value="${esc(c.phone)}" disabled></div>
+          <div class="field"><label for="ec">City</label><input id="ec" class="input" value="${esc(c.city)}"></div>
+          <div class="field"><label for="ei">ID proof</label><select id="ei" class="select">${['Aadhaar', 'Driving licence', 'Voter ID'].map((x) => `<option ${x === c.idProof ? 'selected' : ''}>${x}</option>`).join('')}</select></div></div>`,
+        onConfirm: async (el) => { const v = (k) => el.querySelector('#' + k).value; await RR.api.updateCustomer({ id, name: v('en'), city: v('ec'), idProof: v('ei'), notes: $('note').value }); window.toast('Customer updated'); } }); });
+  });
+</script>
+<script src="js/app.js"></script>
+</body>
+</html>

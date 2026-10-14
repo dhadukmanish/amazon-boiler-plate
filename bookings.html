@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en" data-theme="light" data-density="comfortable">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27%3E%3Cpath d=%27M6 3h12l4 6-10 12L2 9Z%27 fill=%27%23ec7211%27/%3E%3C/svg%3E">
+  <title>Bookings · Pratishtha Bridal</title>
+  <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/tokens.css">
+  <link rel="stylesheet" href="css/layout.css">
+  <link rel="stylesheet" href="css/components.css">
+  <link rel="stylesheet" href="css/rental.css">
+</head>
+<body data-active="bookings" data-perm="view_bookings">
+<div id="page">
+  <div class="page-header">
+    <div><h1>Bookings</h1></div>
+    <div class="actions">
+      <div class="seg" id="views" role="group" aria-label="View">
+        <button data-view="list" aria-pressed="true"><i data-icon="list"></i> List</button>
+        <button data-view="kanban" aria-pressed="false"><i data-icon="columns"></i> Kanban</button>
+      </div>
+      <a class="btn btn-primary" data-perm="create_booking" href="booking-new.html"><i data-icon="plus"></i> New booking</a>
+    </div>
+  </div>
+
+  <!-- LIST VIEW -->
+  <section class="card" data-table id="v-list">
+    <div class="toolbar">
+      <input class="input" data-filter placeholder="Search name, phone, piece number or booking" aria-label="Search bookings">
+      <div class="chips" data-chips data-for="#rows" id="chips">
+        <button data-status="all" aria-pressed="true">All</button>
+        <button data-status="upcoming" aria-pressed="false">Upcoming</button>
+        <button data-status="out" aria-pressed="false">With customer</button>
+        <button data-status="overdue" aria-pressed="false">Overdue</button>
+        <button data-status="returned" aria-pressed="false">Returned</button>
+        <button data-status="cancelled" aria-pressed="false">Cancelled</button>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table class="table">
+        <thead><tr>
+          <th data-sort>Booking</th><th data-sort>Customer</th><th>Piece</th>
+          <th data-sort>Pickup</th><th data-sort>Return</th><th>Status</th><th class="num" data-sort>Balance</th><th>Action</th>
+        </tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+    <div class="card-footer"><span class="muted" id="foot"></span></div>
+  </section>
+
+  <!-- KANBAN VIEW: drag a card to the next column (Upcoming -> With customer asks for the hand-over, With customer -> Returned opens the return screen) -->
+  <section class="kanban" id="v-kanban" hidden></section>
+</div>
+<script src="js/config.js"></script>
+<script src="js/data.js"></script>
+<script src="js/api.js"></script>
+<script src="js/shell.js"></script>
+<script>
+  RR.ready.then(() => {
+    const { BOOKINGS, STATUS, inr, fmt, esc } = RR, $ = (id) => document.getElementById(id), chips = $('chips');
+    const wa = (b) => RR.waLink('overdue', b);
+    const sorted = () => [...BOOKINGS].sort((a, b) => (a.from < b.from ? 1 : a.from > b.from ? -1 : b.no - a.no));
+
+    function action(b) {
+      if (b.status === 'upcoming') return !RR.api.has('handover') ? '' : `<button class="btn btn-sm" data-hand="${b.no}">Hand over</button>`;
+      if (b.status === 'out') return !RR.api.has('receive_return') ? '' : `<a class="btn btn-sm" href="return.html?id=${b.no}">Receive return</a>`;
+      if (b.status === 'overdue') return `<a class="btn btn-wa btn-sm" target="_blank" rel="noopener" href="${wa(b)}">WhatsApp</a> ${RR.api.has('receive_return') ? `<a class="btn btn-sm" href="return.html?id=${b.no}">Return</a>` : ''}`;
+      if (b.status === 'returned') return `<a class="btn btn-sm" target="_blank" href="slip.html?type=return&id=${b.no}">Receipt</a>`;
+      return '';
+    }
+    function renderList() {
+      $('rows').innerHTML = sorted().map((b) => { const o = RR.outfitById(b.outfit) || { id: b.outfit, name: '' }, st = STATUS[b.status];
+        return `<tr data-status="${b.status}"><td><a href="booking.html?id=${b.no}">${b.id}</a></td>
+          <td><a href="customer.html?id=${b.customerId}">${esc(b.customer)}</a><br><span class="muted">${esc(b.phone)}</span></td>
+          <td><a href="outfit.html?id=${o.id}">${esc(o.name)}</a> <span class="muted">${o.id}</span></td><td>${fmt(b.from)}</td><td>${fmt(b.to)}</td>
+          <td><span class="indicator ${st.cls}">${b.status === 'overdue' ? 'Overdue ' + b.lateDays + (b.lateDays > 1 ? ' days' : ' day') : st.label}</span></td>
+          <td class="num">${b.due + b.lateFee ? inr(b.due + b.lateFee) : '₹0'}</td><td>${action(b)}</td></tr>`; }).join('') || '<tr><td colspan="8" class="muted">No bookings yet.</td></tr>';
+      const count = (s) => BOOKINGS.filter((b) => b.status === s).length;
+      chips.querySelectorAll('button').forEach((x) => { const s = x.dataset.status, n = s === 'all' ? BOOKINGS.length : count(s); x.innerHTML = `${x.textContent.replace(/\s*\d+$/, '')}<span class="count">${n}</span>`; });
+      $('foot').textContent = `${BOOKINGS.length} booking${BOOKINGS.length === 1 ? '' : 's'}`;
+      if (chips._apply) chips._apply();
+    }
+
+    const COLS = [['upcoming', 'Upcoming', 'var(--c-info)'], ['out', 'With customer', 'var(--c-warning)'], ['overdue', 'Overdue', 'var(--c-danger)'], ['returned', 'Returned', 'var(--c-success)']];
+    function renderKanban() {
+      $('v-kanban').innerHTML = COLS.map(([k, label, color]) => {
+        const list = sorted().filter((b) => b.status === k).slice(0, k === 'returned' ? 12 : 100);
+        return `<div class="kcol" style="--k:${color}" data-col="${k}"><header><span>${label}</span><span class="count">${BOOKINGS.filter((b) => b.status === k).length}</span></header><div class="cards">` +
+          list.map((b) => { const o = RR.outfitById(b.outfit) || { id: b.outfit, name: '' };
+            return `<article class="kcard" draggable="${k === 'upcoming' || k === 'out' || k === 'overdue'}" data-no="${b.no}"><div class="row"><a href="booking.html?id=${b.no}"><strong>${b.id}</strong></a><span class="muted">${b.due + b.lateFee ? inr(b.due + b.lateFee) : ''}</span></div>
+              <span>${esc(b.customer)}</span><span class="muted">${o.id} ${esc(o.name)} · ${fmt(b.from)} – ${fmt(b.to)}</span>${k === 'overdue' ? `<a class="btn btn-wa btn-sm" target="_blank" rel="noopener" href="${wa(b)}" style="justify-self:start">WhatsApp</a>` : ''}</article>`; }).join('') + '</div></div>';
+      }).join('');
+    }
+    const render = () => { renderList(); renderKanban(); };
+    render(); document.addEventListener('rr:data', render);
+
+    // list actions
+    $('rows').addEventListener('click', (e) => { const h = e.target.closest('[data-hand]'); if (h) RR.ui.handOver(RR.bookingByNo(h.dataset.hand)); });
+
+    // List <-> Kanban switch
+    $('views').addEventListener('click', (e) => {
+      const b = e.target.closest('button'); if (!b) return;
+      $('views').querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', x === b));
+      $('v-list').hidden = b.dataset.view !== 'list'; $('v-kanban').hidden = b.dataset.view !== 'kanban';
+    });
+
+    // Kanban drag & drop (rules enforced by the server too)
+    let dragging = null;
+    const kb = $('v-kanban');
+    kb.addEventListener('dragstart', (e) => { const c = e.target.closest('.kcard'); if (c) { dragging = c; c.classList.add('dragging'); } });
+    kb.addEventListener('dragend', () => { if (dragging) dragging.classList.remove('dragging'); kb.querySelectorAll('.kcol').forEach((c) => c.classList.remove('over')); });
+    kb.addEventListener('dragover', (e) => { const c = e.target.closest('.kcol'); if (c) { e.preventDefault(); c.classList.add('over'); } });
+    kb.addEventListener('dragleave', (e) => { const c = e.target.closest('.kcol'); if (c && !c.contains(e.relatedTarget)) c.classList.remove('over'); });
+    kb.addEventListener('drop', (e) => {
+      const col = e.target.closest('.kcol'); if (!col || !dragging) return; e.preventDefault(); col.classList.remove('over');
+      const b = RR.bookingByNo(dragging.dataset.no), to = col.dataset.col; dragging = null;
+      if (to === b.status) return;
+      if (b.status === 'upcoming' && to === 'out') { if (RR.api.has('handover')) RR.ui.handOver(b); else toast('You are not allowed to hand over outfits.'); }
+      else if ((b.status === 'out' || b.status === 'overdue') && to === 'returned') { if (RR.api.has('receive_return')) location.href = 'return.html?id=' + b.no; else toast('You are not allowed to receive returns.'); }
+      else toast('Use the buttons: Hand over → With customer → Return. A booking cannot jump back.');
+    });
+  });
+</script>
+<script src="js/app.js"></script>
+</body>
+</html>
